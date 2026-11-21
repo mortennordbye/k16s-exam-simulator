@@ -65,7 +65,7 @@ sys.exit(1)
 fi
 
 # Behaviour: mkdir must fail in the running pod
-if [[ "$STATUS" != "Running" ]] || kubectl exec "$POD" -- mkdir "/tmp/k16s-probe-$RANDOM" >/dev/null 2>&1; then
+if [[ "${STATUS%%/*}" != "Running" ]] || kubectl exec "$POD" -- mkdir "/tmp/k16s-probe-$RANDOM" >/dev/null 2>&1; then
   echo "FAIL: mkdir still works in pod seccomp-mkdir: the profile is not active"
   exit 1
 fi
