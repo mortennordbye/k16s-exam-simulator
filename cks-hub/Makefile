@@ -9,7 +9,7 @@ DESKTOP := 'http://localhost:8080/desktop/vnc.html?autoconnect=true&resize=remot
 TERMINAL := http://localhost:8080/terminal/
 
 .DEFAULT_GOAL := help
-.PHONY: help today up stop status exam desktop terminal ssh password rebuild destroy guide ui patch clean plan scaffolds drills facts docs killercoda
+.PHONY: help today up stop status exam desktop terminal ssh password rebuild destroy guide ui push clean plan scaffolds drills facts docs killercoda
 
 help: ## Show the commands
 	@echo "CKS hub. Exam target 2026-12-17."
@@ -57,13 +57,12 @@ guide: ## Copy 07-scaffolds.md into the exam UI guide and rebuild the UI
 
 ui: ## Rebuild the exam UI after a change (about 30 s)
 	@limactl shell k16s -- bash -lc 'sudo rm -f /usr/local/bin/k16s-server && sudo bash $$HOME/k16s/provision/k16s-server.sh' > /dev/null
-	@$(MAKE) --no-print-directory clean patch
+	@$(MAKE) --no-print-directory clean
 	@echo "  UI rebuilt. Reload the exam page."
 
-patch: ## Save the local K16S changes to patches/
-	@git -C $(K16S_DIR) add -N server/frontend/src/lib/guide.js server/frontend/src/lib/guide.md
-	@git -C $(K16S_DIR) diff -- local/lima.yaml provision server/frontend/src > patches/k16s-exam-simulator.patch
-	@echo "  patches/k16s-exam-simulator.patch updated"
+
+push: ## Push the current branch of the K16S fork to GitHub
+	@git -C $(K16S_DIR) push
 
 clean: ## Free disk in the lab VM (apt, Go and npm caches)
 	@limactl shell k16s -- sudo bash -c 'apt-get clean; rm -rf /root/.cache/go-build /root/go/pkg/mod /root/.npm; journalctl --vacuum-size=100M -q' >/dev/null 2>&1 || true

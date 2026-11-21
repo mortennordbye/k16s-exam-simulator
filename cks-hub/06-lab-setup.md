@@ -16,21 +16,19 @@ How the practice lab is built, why, and how to rebuild it. Read this before you 
 | Firefox on the Mac | The exam desktop uses Firefox for docs. |
 | Exam bought later | Buy by 2026-12-01 so killer.sh A (12-06) and B (12-13) still fit. Exam target 2026-12-17. |
 
-## Local patches to K16S
+## The fork
 
-K16S commit: `08f0ba1`. All patches are in `patches/k16s-exam-simulator.patch`.
-Save them with `make patch` (`make ui` and `make guide` do this for you). If you clone K16S again, apply them: `git -C repos/k16s-exam-simulator apply ../../patches/k16s-exam-simulator.patch`
+The lab runs from your fork: https://github.com/mortennordbye/k16s-exam-simulator (branch `main`), cloned at `repos/k16s-exam-simulator`. Remotes: `origin` = your fork, `upstream` = immanuwell/k16s-exam-simulator. All changes are commits there (no patch files).
 
-1. `local/lima.yaml`: runs `apt-get update` at boot. Without it the first install fails: `E: Package 'gnupg2' has no installation candidate` (stale apt lists in the Ubuntu image).
-2. `server/frontend/src/routes/+page.svelte`:
-   - The Desktop panel uses `vnc.html` (full noVNC, has a clipboard panel), not `vnc_lite.html` (no clipboard).
-   - The right panel opens on Desktop, not Terminal.
-   - Layout: draggable divider between the question and the desktop (default 25%, saved in the browser, double-click resets). The desktop uses noVNC `resize=remote`, so the Linux screen fills the panel.
-   - **Guide button** ("Show guide (where to copy from)") under each task. It shows the matching sections of `07-scaffolds.md` (code in `src/lib/guide.js`, task id keyword to section rules). After you edit `07-scaffolds.md`, run `make guide`.
+What the fork adds:
 
-3. `provision/desktop.sh`: Openbox opens every window maximized (also applied live to `/home/candidate/.config/openbox/rc.xml`).
+1. Lab: `apt-get update` at boot, macOS bash 3.2 fix in `install.sh`, Docker Hub through `mirror.gcr.io` (no rate limit), CKS tool profile (trivy, kube-bench, bom, kubesec, kube-linter, Falco, gVisor).
+2. Exam UI: desktop first (full noVNC, remote resize), click-to-copy, divider, Guide button with full manifests, windows maximized.
+3. **Real exam mode**: tasks set up at start, no hints, guide or checks, weight in %, flag for review, graded after End Exam, PASS/FAIL against 67%.
+4. **Partial scoring**: points = weight x correct items / items. Only items the task asks for count (measured 20 s after setup). Breaking something that was correct (a guard) costs points.
+5. **Tasks**: 16 new CKS v1.37 tasks (drill "New topics") and 3 mock exams (Mock 1 to 3, 15 to 17 tasks, 98 points each). Reference solutions in `dev/solutions/`, test log in `dev/TESTING.md`.
 
-Not patched, avoided instead: `install.sh --laptop` fails on macOS bash 3.2 with `LAPTOP_ARGS[@]: unbound variable` when no laptop flags are given. The Makefile calls `local/k16s-local up` directly with all flags.
+Verified 2026-11-21: each mock from a clean rebuild in real exam mode, all reference solutions applied in order, score 98/98 for all 3.
 
 ## Changes to the UI after a rebuild
 

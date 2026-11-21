@@ -13,7 +13,7 @@ Start here. Run `make` in this folder to see all commands (lab, plan, docs).
 | [02-exam-facts.md](02-exam-facts.md) | Exam rules, weights, allowed docs, CKA renewal rule, traps. |
 | [03-tools-and-labs.md](03-tools-and-labs.md) | Simulators ranked, local lab recipe (Multipass + kubeadm). |
 | [06-lab-setup.md](06-lab-setup.md) | How the lab is built, local patches, decisions, known limits. |
-| `repos/` | Cloned mock exams and lab scripts. `repos/k16s-exam-simulator` runs your lab. |
+| `repos/k16s-exam-simulator` | The lab: your fork of K16S (https://github.com/mortennordbye/k16s-exam-simulator). |
 
 ## Today
 
