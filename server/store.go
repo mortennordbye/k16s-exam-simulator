@@ -67,6 +67,7 @@ func mustOpenDB(path string) *sql.DB {
 		`ALTER TABLE sessions ADD COLUMN graded_at INTEGER`,
 		`ALTER TABLE progress ADD COLUMN checks_passed INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE progress ADD COLUMN checks_total INTEGER NOT NULL DEFAULT 0`,
+		`CREATE TABLE IF NOT EXISTS baseline (session_id TEXT NOT NULL, question_id TEXT NOT NULL, sites TEXT NOT NULL, PRIMARY KEY (session_id, question_id))`,
 	} {
 		db.Exec(stmt)
 	}
@@ -184,4 +185,19 @@ func upsertProgressScore(db *sql.DB, sessionID, questionID, status, output strin
 			checks_total  = excluded.checks_total
 	`, sessionID, questionID, status, time.Now().Unix(), output, passed, total)
 	return err
+}
+
+func setBaseline(db *sql.DB, sessionID, questionID string, sites []int) error {
+	_, err := db.Exec(`INSERT INTO baseline (session_id, question_id, sites) VALUES (?, ?, ?)
+		ON CONFLICT (session_id, question_id) DO UPDATE SET sites = excluded.sites`,
+		sessionID, questionID, sitesString(sites))
+	return err
+}
+
+func getBaseline(db *sql.DB, sessionID, questionID string) []int {
+	var s string
+	if err := db.QueryRow(`SELECT sites FROM baseline WHERE session_id = ? AND question_id = ?`, sessionID, questionID).Scan(&s); err != nil {
+		return nil
+	}
+	return parseSites(s)
 }

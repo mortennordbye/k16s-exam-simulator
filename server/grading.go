@@ -23,17 +23,22 @@ import (
 // exam, where partial work earns partial points.
 
 type CheckResult struct {
-	Passed    bool     `json:"passed"`
-	Checks    int      `json:"checks_passed"`
-	Total     int      `json:"checks_total"`
-	Failed    []string `json:"failed"`
-	Output    string   `json:"output"`
+	Passed      bool     `json:"passed"`
+	Checks      int      `json:"checks_passed"`
+	Total       int      `json:"checks_total"`
+	Failed      []string `json:"failed"`
+	Output      string   `json:"output"`
+	FailedSites []int    `json:"-"`
 }
 
 var (
 	failSiteRe = regexp.MustCompile(`echo\s+["']?FAIL`)
 	setERe     = regexp.MustCompile(`(?m)^(\s*)set\s+-([a-zA-Z]+)(.*)$`)
 	markerRe   = regexp.MustCompile(`(?m)^__K16S__ failed=(\d+)\s*$`)
+	// Each FAIL message gets its site number (FAIL@3:) so a check can be
+	// tracked between runs. The number is removed before display.
+	failEchoRe = regexp.MustCompile(`(echo\s+["']?)FAIL:`)
+	siteRe     = regexp.MustCompile(`^FAIL@(\d+):\s*`)
 )
 
 const validatePreamble = `__K16S_FAILS=0
@@ -57,6 +62,12 @@ func wrapValidate(src string) string {
 			return m[1] + "set" + m[3]
 		}
 		return m[1] + "set -" + flags + m[3]
+	})
+	n := 0
+	src = failEchoRe.ReplaceAllStringFunc(src, func(m string) string {
+		n++
+		sub := failEchoRe.FindStringSubmatch(m)
+		return sub[1] + "FAIL@" + strconv.Itoa(n) + ":"
 	})
 	if strings.HasPrefix(src, "#!") {
 		if i := strings.Index(src, "\n"); i >= 0 {
@@ -99,8 +110,19 @@ func runValidate(parent context.Context, script string) CheckResult {
 
 	var fails []string
 	var kept []string
+	var sites []int
+	seen := map[int]bool{}
 	for _, l := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
 		t := strings.TrimSpace(l)
+		if m := siteRe.FindStringSubmatch(t); m != nil {
+			id, _ := strconv.Atoi(m[1])
+			if !seen[id] {
+				seen[id] = true
+				sites = append(sites, id)
+			}
+			t = "FAIL: " + siteRe.ReplaceAllString(t, "")
+			l = t
+		}
 		if strings.HasPrefix(t, "FAIL:") {
 			fails = append(fails, strings.TrimSpace(strings.TrimPrefix(t, "FAIL:")))
 		}
@@ -119,17 +141,65 @@ func runValidate(parent context.Context, script string) CheckResult {
 		passedChecks = total
 	}
 	return CheckResult{
-		Passed: all,
-		Checks: passedChecks,
-		Total:  total,
-		Failed: fails,
-		Output: strings.TrimSpace(strings.Join(kept, "\n")),
+		Passed:      all,
+		Checks:      passedChecks,
+		Total:       total,
+		Failed:      fails,
+		Output:      strings.TrimSpace(strings.Join(kept, "\n")),
+		FailedSites: sites,
 	}
+}
+
+// applyBaseline scores only the checks that failed right after setup (the
+// work the task asks for). Checks that already passed after setup ("the pod
+// exists") give no points, like the real exam. Without a baseline the plain
+// count stays.
+func applyBaseline(r CheckResult, baseline []int) CheckResult {
+	if len(baseline) == 0 {
+		return r
+	}
+	if r.Passed {
+		r.Checks, r.Total = len(baseline), len(baseline)
+		return r
+	}
+	if len(r.FailedSites) == 0 { // could not track sites: keep plain count
+		return r
+	}
+	now := map[int]bool{}
+	for _, s := range r.FailedSites {
+		now[s] = true
+	}
+	p := 0
+	for _, b := range baseline {
+		if !now[b] {
+			p++
+		}
+	}
+	r.Checks, r.Total = p, len(baseline)
+	return r
+}
+
+func sitesString(s []int) string {
+	parts := make([]string, len(s))
+	for i, v := range s {
+		parts[i] = strconv.Itoa(v)
+	}
+	return strings.Join(parts, " ")
+}
+
+func parseSites(s string) []int {
+	var out []int
+	for _, f := range strings.Fields(s) {
+		if v, err := strconv.Atoi(f); err == nil {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func statusFor(r CheckResult) string {
 	switch {
-	case r.Passed:
+	case r.Passed || (r.Total > 0 && r.Checks == r.Total):
 		return "passed"
 	case r.Checks > 0:
 		return "partial"

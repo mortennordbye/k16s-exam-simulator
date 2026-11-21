@@ -61,3 +61,26 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestApplyBaseline(t *testing.T) {
+	// sites 1,2,3 exist; after setup 2 and 3 failed (1 was free).
+	r := CheckResult{Checks: 2, Total: 3, FailedSites: []int{3}}
+	got := applyBaseline(r, []int{2, 3})
+	if got.Checks != 1 || got.Total != 2 {
+		t.Fatalf("want 1/2, got %d/%d", got.Checks, got.Total)
+	}
+	if statusFor(applyBaseline(CheckResult{Checks: 1, Total: 3, FailedSites: []int{1, 2}}, []int{3})) != "passed" {
+		t.Fatal("baseline check passing should be passed")
+	}
+}
+
+func TestSiteNumbers(t *testing.T) {
+	p := writeScript(t, "#!/usr/bin/env bash\nif ! false; then\n  echo \"FAIL: a\"\n  exit 1\nfi\nif ! false; then\n  echo \"FAIL: b\"\n  exit 1\nfi\n")
+	r := runValidate(context.Background(), p)
+	if len(r.FailedSites) != 2 || r.FailedSites[0] != 1 || r.FailedSites[1] != 2 {
+		t.Fatalf("sites: %v", r.FailedSites)
+	}
+	if contains(r.Output, "FAIL@") {
+		t.Fatalf("site numbers must not show: %q", r.Output)
+	}
+}

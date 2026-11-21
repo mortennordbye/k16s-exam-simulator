@@ -137,6 +137,19 @@ func prepareAll(db *sql.DB, examDir, sessionID string, qs []Question, mode strin
 		}
 		upsertProgress(db, sessionID, q.ID, status, out)
 	}
+	// Let pods and restarts settle, then save which checks still fail.
+	time.Sleep(20 * time.Second)
+	for i := range qs {
+		q := &qs[i]
+		if unavailableReason(q, mode) != "" {
+			continue
+		}
+		s, _ := getSession(db, sessionID)
+		if s == nil || s.EndedAt != nil {
+			return
+		}
+		recordBaseline(db, examDir, s.Profile, sessionID, q.ID)
+	}
 }
 
 // gradeAll runs every task's check script after the exam ends.
@@ -156,7 +169,7 @@ func gradeAll(db *sql.DB, examDir, sessionID string, qs []Question, mode string)
 		if _, err := os.Stat(script); err != nil {
 			continue
 		}
-		r := runValidate(context.Background(), script)
+		r := applyBaseline(runValidate(context.Background(), script), getBaseline(db, sessionID, q.ID))
 		upsertProgressScore(db, sessionID, q.ID, statusFor(r), r.Output, r.Checks, r.Total)
 	}
 	setGraded(db, sessionID)
@@ -239,7 +252,7 @@ func handleCheck(db *sql.DB, questions map[string][]Question, examDir string, mo
 			return
 		}
 
-		res := runValidate(r.Context(), script)
+		res := applyBaseline(runValidate(r.Context(), script), getBaseline(db, session.ID, id))
 		if dbErr := upsertProgressScore(db, session.ID, id, statusFor(res), res.Output, res.Checks, res.Total); dbErr != nil {
 			log.Printf("upsertProgress: %v", dbErr)
 		}
@@ -269,6 +282,12 @@ func handleSetup(db *sql.DB, examDir string, questions map[string][]Question, mo
 			writeJSON(w, map[string]any{"ok": false, "output": out})
 			return
 		}
+
+		// Save the baseline after the environment settles (pods start).
+		go func(profile, sid string) {
+			time.Sleep(20 * time.Second)
+			recordBaseline(db, examDir, profile, sid, id)
+		}(session.Profile, session.ID)
 
 		// Mark as attempted so the question nav shows it's been started.
 		if dbErr := upsertProgress(db, session.ID, id, "attempted", ""); dbErr != nil {
@@ -346,5 +365,18 @@ func chownNewOptEntries(before map[string]bool) {
 		if err := exec.Command("chown", "-R", "candidate:candidate", path).Run(); err != nil {
 			log.Printf("chown %s: %v", path, err)
 		}
+	}
+}
+
+// recordBaseline runs the check script right after setup and saves which
+// checks fail. Only those checks count for points later.
+func recordBaseline(db *sql.DB, examDir, profile, sessionID, id string) {
+	script := filepath.Join(examDir, profile, "scripts", id, "validate.sh")
+	if _, err := os.Stat(script); err != nil {
+		return
+	}
+	r := runValidate(context.Background(), script)
+	if len(r.FailedSites) > 0 {
+		setBaseline(db, sessionID, id, r.FailedSites)
 	}
 }
