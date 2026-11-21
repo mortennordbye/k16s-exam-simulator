@@ -423,21 +423,23 @@ cmd_reset() {
 }
 
 cmd_destroy() {
-  if vm_exists "${CILIUM_INSTANCE}"; then
-    if instance_exists || confirm "This deletes the ${CILIUM_INSTANCE} VM. Continue?"; then
-      limactl stop "${CILIUM_INSTANCE}" --force 2>/dev/null || true
-      limactl delete "${CILIUM_INSTANCE}" --force
-      rm -f "${CILIUM_LOG}"
-      log_ok "${CILIUM_INSTANCE} VM deleted"
-    fi
+  if ! instance_exists && ! vm_exists "${CILIUM_INSTANCE}"; then
+    log_info "No k16s VM exists"; return 0
   fi
-  instance_exists || { log_info "No k16s VM exists"; return 0; }
-  confirm "This deletes the k16s VM and all its data permanently. Continue?" \
+  confirm "This deletes the k16s VMs and all their data permanently. Continue?" \
     || { log_info "Aborted"; return 0; }
-  limactl stop "${INSTANCE}" --force 2>/dev/null || true
-  limactl delete "${INSTANCE}" --force
-  rm -f "${PORT_FILE}"
-  log_ok "k16s VM deleted"
+  if vm_exists "${CILIUM_INSTANCE}"; then
+    limactl stop "${CILIUM_INSTANCE}" --force 2>/dev/null || true
+    limactl delete "${CILIUM_INSTANCE}" --force
+    rm -f "${CILIUM_LOG}"
+    log_ok "${CILIUM_INSTANCE} VM deleted"
+  fi
+  if instance_exists; then
+    limactl stop "${INSTANCE}" --force 2>/dev/null || true
+    limactl delete "${INSTANCE}" --force
+    rm -f "${PORT_FILE}"
+    log_ok "k16s VM deleted"
+  fi
 }
 
 cmd_snapshot() {
