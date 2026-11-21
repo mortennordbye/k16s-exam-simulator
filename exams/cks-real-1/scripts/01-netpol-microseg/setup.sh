@@ -3,6 +3,7 @@ set -eo pipefail
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
 kubectl create namespace netpol-internal --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n netpol-internal delete networkpolicy deny-all-ingress worker-egress-internal --ignore-not-found >/dev/null
 
 kubectl -n netpol-internal run worker --image=nginx:alpine --labels=role=worker \
   --dry-run=client -o yaml | kubectl apply -f -

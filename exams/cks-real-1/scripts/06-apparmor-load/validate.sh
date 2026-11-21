@@ -38,7 +38,7 @@ ann_match=any('localhost/'+profile in v for v in ann.values())
 # Check native securityContext style (K8s 1.30+)
 ctrs=d.get('spec',{}).get('containers',[])
 native_match=any(
-  c.get('securityContext',{}).get('appArmorProfile',{}).get('localhostProfile')==profile
+  c.get('name')=='deny-etc' and c.get('securityContext',{}).get('appArmorProfile',{}).get('localhostProfile')==profile
   for c in ctrs
 )
 pod_sc=d.get('spec',{}).get('securityContext',{})
@@ -48,7 +48,7 @@ assert ann_match or native_match or pod_native, \
   f'AppArmor profile {profile} not found in pod annotations or securityContext'
 print('ok')
 " <<< "$POD_JSON" 2>/dev/null | grep -q ok; then
-  echo "FAIL: pod $POD does not have AppArmor profile $PROFILE applied"
+  echo "FAIL: container deny-etc of pod $POD does not have AppArmor profile $PROFILE applied"
   exit 1
 fi
 
@@ -58,8 +58,9 @@ if [[ ! -f /opt/cks-apparmor/deny-etc-test.txt ]]; then
   exit 1
 fi
 
-if ! grep -qi "permission denied\|operation not permitted" /opt/cks-apparmor/deny-etc-test.txt; then
-  echo "FAIL: /opt/cks-apparmor/deny-etc-test.txt does not show write was denied (expected 'Permission denied')"
+PROBE=$(kubectl exec "$POD" -c deny-etc -- sh -c 'echo x > /etc/k16s-probe' 2>&1 || true)
+if ! grep -qi "permission denied" /opt/cks-apparmor/deny-etc-test.txt || ! grep -qi "permission denied" <<< "$PROBE"; then
+  echo "FAIL: writes to /etc in container deny-etc are not denied, or /opt/cks-apparmor/deny-etc-test.txt does not show 'Permission denied'"
   exit 1
 fi
 

@@ -24,6 +24,10 @@ if [[ "$INGRESS_RULES" != "0" ]]; then
   echo "FAIL: deny-all-ingress should have no ingress rules (found $INGRESS_RULES)"
   exit 1
 fi
+if [[ "$(echo "$DENY_NP" | python3 -c 'import sys,json; print(json.load(sys.stdin)["spec"].get("podSelector") or {})' 2>/dev/null)" != "{}" ]]; then
+  echo "FAIL: deny-all-ingress must select all pods (podSelector: {})"
+  exit 1
+fi
 
 # Check worker-egress-internal
 WORKER_NP=$(kubectl get networkpolicy worker-egress-internal -n netpol-internal -o json 2>/dev/null) || {

@@ -13,6 +13,10 @@ kubectl -n dmz run client --image=nginx:alpine --labels=role=client \
 kubectl -n internal run db --image=nginx:alpine --labels=role=db \
   --dry-run=client -o yaml | kubectl apply -f -
 
+kubectl -n netpol-multi delete networkpolicy restrict-ingress-egress --ignore-not-found >/dev/null
+kubectl label namespace dmz zone- >/dev/null 2>&1 || true
+kubectl label namespace internal zone- >/dev/null 2>&1 || true
 mkdir -p /opt/cks3-netpol
+rm -f /opt/cks3-netpol/restrict-ingress-egress.yaml
 
 echo "Environment ready: namespaces netpol-multi, dmz, internal created (unlabelled)"

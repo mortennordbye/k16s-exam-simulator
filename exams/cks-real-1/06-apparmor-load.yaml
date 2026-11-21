@@ -16,6 +16,5 @@ description: |
      - Apply the AppArmor profile `k8s-deny-etc` to the container named `deny-etc`.
      - Pin the pod to the `controlplane` node (`nodeName: controlplane`): AppArmor profiles are node-local.
   3. **Test** that the profile blocks writes to `/etc`: run
-     `kubectl exec deny-etc-pod -- sh -c 'echo test > /etc/blocked 2>&1; echo done'`
-     and save the output to `/opt/cks-apparmor/deny-etc-test.txt`.
+     `kubectl exec deny-etc-pod -c deny-etc -- sh -c 'echo test > /etc/blocked' > /opt/cks-apparmor/deny-etc-test.txt 2>&1`
 hint: "Load with `apparmor_parser -r -W /etc/apparmor.d/k8s-deny-etc`. Apply it with the container field `securityContext.appArmorProfile` (type `Localhost`, `localhostProfile: k8s-deny-etc`)."

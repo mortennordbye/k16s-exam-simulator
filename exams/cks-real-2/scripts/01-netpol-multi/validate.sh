@@ -56,24 +56,35 @@ if [[ "$FOUND_DB" != "ok" ]]; then
   exit 1
 fi
 
-# Egress: UDP 53 to same namespace
+# Egress: UDP and TCP 53 to CoreDNS in kube-system
 FOUND_DNS=$(echo "$NP" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
+def dns_peer(p):
+    ns = (p.get('namespaceSelector') or {}).get('matchLabels') or {}
+    ps = (p.get('podSelector') or {}).get('matchLabels') or {}
+    return ns.get('kubernetes.io/metadata.name') == 'kube-system' and ps.get('k8s-app') == 'kube-dns'
+found = set()
 for rule in d['spec'].get('egress', []):
+    if not any(dns_peer(p) for p in rule.get('to', [])): continue
     for p in rule.get('ports', []):
-        if p.get('port') == 53 and p.get('protocol','TCP') == 'UDP':
-            print('ok'); sys.exit(0)
-print('missing')
+        if p.get('port') == 53:
+            found.add(p.get('protocol', 'TCP'))
+print('ok' if {'UDP', 'TCP'} <= found else 'missing')
 ")
 if [[ "$FOUND_DNS" != "ok" ]]; then
-  echo "FAIL: no egress rule for UDP port 53 (DNS)"
+  echo "FAIL: no egress rule for UDP and TCP port 53 to pods k8s-app=kube-dns in namespace kube-system"
   exit 1
 fi
 
-if [[ ! -f /opt/cks3-netpol/restrict-ingress-egress.yaml ]]; then
-  echo "FAIL: /opt/cks3-netpol/restrict-ingress-egress.yaml not saved"
+if [[ "$(echo "$NP" | python3 -c "import sys,json; t=json.load(sys.stdin)['spec'].get('policyTypes',[]); print('ok' if 'Ingress' in t and 'Egress' in t else '')")" != "ok" ]]; then
+  echo "FAIL: restrict-ingress-egress must have both Ingress and Egress in policyTypes"
   exit 1
 fi
 
-echo "PASS: zone labels set; restrict-ingress-egress policy has correct ingress (8080/dmz), egress (3306/internal), and DNS (UDP 53) rules"
+if ! grep -q 'name: *restrict-ingress-egress' /opt/cks3-netpol/restrict-ingress-egress.yaml 2>/dev/null; then
+  echo "FAIL: /opt/cks3-netpol/restrict-ingress-egress.yaml not saved (it must hold the policy restrict-ingress-egress)"
+  exit 1
+fi
+
+echo "PASS: zone labels set; restrict-ingress-egress policy has correct ingress (8080/dmz), egress (3306/internal), and DNS (UDP/TCP 53 to kube-system) rules"

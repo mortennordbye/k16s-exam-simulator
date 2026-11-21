@@ -1,17 +1,20 @@
 id: 02-cis-kube-bench-master
-title: Run kube-bench for Control Plane Checks
-weight: 4
+title: Fix kube-bench Control Plane Findings
+weight: 5
 context: controlplane
 description: |
-  Run kube-bench targeting the control plane (master) checks.
+  Run kube-bench for the control plane (`kube-bench run --targets master`) and save the output to `/opt/cks3-cis/kube-bench-master.txt`.
 
-  1. Run kube-bench for the **master** (control plane) checks and save the full output to `/opt/cks3-cis/kube-bench-master.txt`
+  Fix these FAIL findings:
+  - **1.3.2**: kube-controller-manager `--profiling`
+  - **1.4.1**: kube-scheduler `--profiling`
 
-  2. Count the total number of **FAIL** findings and save the integer to `/opt/cks3-cis/kube-bench-master-fail-count.txt`
+  Both components must run again.
 
-  **Tip:** Run as root. kube-bench is at `/usr/local/bin/kube-bench`.
+  **Tip:** Run as root. kube-bench is at `/usr/local/bin/kube-bench`. The static pod manifests are in `/etc/kubernetes/manifests/`.
 hint: |
   ```
   kube-bench run --targets master 2>/dev/null > /opt/cks3-cis/kube-bench-master.txt
-  grep -c '^\[FAIL\]' /opt/cks3-cis/kube-bench-master.txt > /opt/cks3-cis/kube-bench-master-fail-count.txt
+  grep -A8 '^1.3.2\|^1.4.1' /opt/cks3-cis/kube-bench-master.txt
   ```
+  Add `- --profiling=false` to the `command:` list of both manifests and wait until both pods are Ready.
