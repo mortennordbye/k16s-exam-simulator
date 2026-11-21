@@ -19,6 +19,38 @@
   let error      = $state('');
 
   let timerInterval = null;
+  // CKS hub: real exam mode, flags, polling
+  let examMode  = $state(true);
+  let flagged   = $state({});
+  let pollTimer = null;
+  let isExam    = $derived(!!session?.exam_mode);
+  function flagKey() { return 'k16s-flags-' + (session?.id ?? ''); }
+  function toggleFlag(q) {
+    flagged = { ...flagged, [q.id]: !flagged[q.id] };
+    try { localStorage.setItem(flagKey(), JSON.stringify(flagged)); } catch {}
+  }
+  function loadFlags() {
+    try { flagged = JSON.parse(localStorage.getItem(flagKey()) || '{}'); } catch { flagged = {}; }
+  }
+  function stopPoll() { clearInterval(pollTimer); pollTimer = null; }
+  function pollActive() {
+    stopPoll();
+    pollTimer = setInterval(async () => {
+      try { session = await api.get('/api/session'); } catch {}
+    }, 4000);
+  }
+  function pollGrading() {
+    stopPoll();
+    const tick = async () => {
+      try {
+        const s = await api.get('/api/session/last');
+        session = s;
+        if (s.graded_at) stopPoll();
+      } catch {}
+    };
+    tick();
+    pollTimer = setInterval(tick, 3000);
+  }
   let terminalIframe = $state(null);
   let rightPanel = $state('desktop'); // terminal | desktop (CKS hub: desktop first, like the real exam)
   let desktopLoaded = $state(true);
@@ -86,25 +118,32 @@
   // the score fraction — otherwise a lightweight-mode candidate could never
   // reach 100% no matter how well they do on what's actually available.
   let scorableQuestions = $derived(questions.filter(q => !unavailableInThisMode(q)));
-  let score = $derived(
-    scorableQuestions.reduce((acc, q) => progress[q.id]?.status === 'passed' ? acc + q.weight : acc, 0)
-  );
+  // Partial scoring: weight x passed checks / total checks.
+  function pointsFor(q) {
+    const p = progress[q.id];
+    if (!p) return 0;
+    if (p.status === 'passed') return q.weight;
+    if (p.checks_total > 0) return (q.weight * p.checks_passed) / p.checks_total;
+    return 0;
+  }
+  let score = $derived(Math.round(scorableQuestions.reduce((acc, q) => acc + pointsFor(q), 0) * 10) / 10);
   let totalPoints = $derived(scorableQuestions.reduce((acc, q) => acc + q.weight, 0));
 
-  let ckaProfiles = $derived((profiles.length ? profiles : ['cka']).filter(p => p.startsWith('cka')));
-  let cksProfiles = $derived((profiles.length ? profiles : ['cks']).filter(p => p.startsWith('cks')));
+  // CKS hub: CKS only. Real exam mocks (cks-real-*) and topic drills (cks, cks2, cks3).
+  let ckaProfiles = $derived([]);
+  let realProfiles = $derived(profiles.filter(p => p.startsWith('cks-real')).sort());
+  let cksProfiles = $derived(profiles.filter(p => p.startsWith('cks') && !p.startsWith('cks-real') && p !== 'cks-bank').sort());
+  function weightPct(q) { return Math.round((q.weight / (totalPoints || 1)) * 100); }
 
   function labelFor(p, group) {
     const sorted = [...group].sort();
-    const prefix = p.startsWith('cka') ? 'CKA' : 'CKS';
+    const prefix = p.startsWith('cks-real') ? 'Mock' : p.startsWith('cka') ? 'CKA' : 'Drill';
     return `${prefix} ${sorted.indexOf(p) + 1}`;
   }
 
   function examLabel(p) {
-    const group = (profiles.length ? profiles : [p]).filter(x =>
-      x.startsWith(p.startsWith('cka') ? 'cka' : 'cks')
-    );
-    return labelFor(p, group);
+    if (p.startsWith('cks-real')) return 'CKS ' + labelFor(p, realProfiles);
+    return 'CKS ' + labelFor(p, cksProfiles);
   }
 
   let timeClass = $derived(
@@ -123,7 +162,11 @@
 
   function statusClass(q) {
     if (unavailableInThisMode(q)) return 'bg-[#4a5169] text-slate-600 ring-[#6b7392] opacity-50 line-through decoration-slate-600';
+    if (isExam && !session?.ended_at) {
+      return flagged[q.id] ? 'bg-amber-700 text-amber-100 ring-amber-500' : 'bg-[#4a5169] text-slate-300 ring-[#6b7392]';
+    }
     const s = progress[q.id]?.status;
+    if (s === 'partial')  return 'bg-yellow-700 text-yellow-100 ring-yellow-600';
     if (s === 'passed')   return 'bg-green-700 text-green-100 ring-green-600';
     if (s === 'failed')   return 'bg-red-800   text-red-100   ring-red-700';
     if (s === 'attempted') return 'bg-amber-700 text-amber-100 ring-amber-600';
@@ -180,8 +223,11 @@
       const status = await api.get('/api/status');
       profiles = status.profiles ?? [];
       mode = status.mode ?? 'heavy';
+      const real = profiles.filter(p => p.startsWith('cks-real')).sort();
+      profile = real[0] ?? 'cks';
       if (status.session) {
         session = status.session;
+        loadFlags();
         const data = await api.get('/api/questions?profile=' + session.profile);
         questions = data.questions ?? [];
         if (session.ended_at) {
@@ -189,6 +235,7 @@
         } else {
           view = 'exam';
           startTimer();
+          if (session.exam_mode) pollActive();
         }
       } else {
         view = 'home';
@@ -204,14 +251,16 @@
     const saved = Number(localStorage.getItem('k16s-left-pct'));
     if (saved >= 15 && saved <= 60) leftPct = saved;
   });
-  onDestroy(() => { clearInterval(timerInterval); document.removeEventListener('copy', onCopy); });
+  onDestroy(() => { clearInterval(timerInterval); stopPoll(); document.removeEventListener('copy', onCopy); });
 
   // ── Actions ────────────────────────────────────────────────────────────────
   async function startExam() {
     error = '';
     try {
-      const resp = await api.post('/api/session/start', { profile, duration_secs: duration });
+      const resp = await api.post('/api/session/start', { profile, duration_secs: duration, exam_mode: examMode });
       session = resp.session;
+      loadFlags();
+      if (session.exam_mode) pollActive();
       const data = await api.get('/api/questions?profile=' + profile);
       questions = data.questions ?? [];
       currentIdx = 0;
@@ -264,6 +313,7 @@
       // Session may have already ended (timer ran out and we already called endExam)
     }
     view = 'results';
+    pollGrading();
   }
 
   function selectQuestion(idx) {
@@ -272,6 +322,7 @@
   }
 
   async function newExam() {
+    stopPoll();
     session = null;
     questions = [];
     checkResult = null;
@@ -318,9 +369,24 @@
               </div>
             </div>
           {/if}
+          {#if realProfiles.length}
+            <div class="flex-1 border border-[#5a6280] rounded-md px-2 pt-1.5 pb-2 space-y-1.5">
+              <div class="text-[10px] text-slate-500 uppercase tracking-widest text-center">CKS mock exams (v1.37)</div>
+              <div class="flex gap-1.5">
+                {#each realProfiles as p}
+                  <button
+                    onclick={() => profile = p}
+                    class="flex-1 py-1.5 rounded text-sm font-medium transition-colors {profile === p
+                      ? 'bg-[#3b82f6] text-white'
+                      : 'bg-[#4a5169] text-slate-400 hover:text-slate-200'}"
+                  >{labelFor(p, realProfiles)}</button>
+                {/each}
+              </div>
+            </div>
+          {/if}
           {#if cksProfiles.length}
             <div class="flex-1 border border-[#5a6280] rounded-md px-2 pt-1.5 pb-2 space-y-1.5">
-              <div class="text-[10px] text-slate-500 uppercase tracking-widest text-center">CKS</div>
+              <div class="text-[10px] text-slate-500 uppercase tracking-widest text-center">Topic drills</div>
               <div class="flex gap-1.5">
                 {#each cksProfiles.sort() as p}
                   <button
@@ -339,7 +405,7 @@
       <div>
         <div class="block text-xs text-slate-400 uppercase tracking-wider mb-1.5">Duration</div>
         <div class="flex gap-2">
-          {#each [{label:'2h', val:7200},{label:'3h', val:10800},{label:'30m', val:1800}] as opt}
+          {#each [{label:'2h', val:7200},{label:'1h', val:3600},{label:'30m', val:1800}] as opt}
             <button
               onclick={() => duration = opt.val}
               class="flex-1 py-2 rounded text-sm font-medium transition-colors {duration === opt.val
@@ -348,6 +414,23 @@
             >{opt.label}</button>
           {/each}
         </div>
+      </div>
+
+      <div>
+        <div class="block text-xs text-slate-400 uppercase tracking-wider mb-1.5">Mode</div>
+        <div class="flex gap-2">
+          <button onclick={() => examMode = true}
+            class="flex-1 py-2 rounded text-sm font-medium transition-colors {examMode ? 'bg-[#3b82f6] text-white' : 'bg-[#4a5169] text-slate-400 hover:text-slate-200'}"
+          >Real exam</button>
+          <button onclick={() => examMode = false}
+            class="flex-1 py-2 rounded text-sm font-medium transition-colors {!examMode ? 'bg-[#3b82f6] text-white' : 'bg-[#4a5169] text-slate-400 hover:text-slate-200'}"
+          >Practice</button>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
+          {examMode
+            ? 'Like the real CKS: tasks are ready at start, no hints, no guide, no checks. Graded after End Exam.'
+            : 'Setup Env, Check Answer with partial points, hints and the guide.'}
+        </p>
       </div>
 
       <button
@@ -379,7 +462,7 @@
             onclick={() => selectQuestion(i)}
             class="w-7 h-7 rounded text-xs font-mono font-medium transition-all ring-1 {statusClass(q)}
                    {i === currentIdx ? 'ring-2 ring-white/50 scale-110' : 'ring-transparent'}"
-            title={unavailableInThisMode(q) ? q.title + ' — unavailable in lightweight mode' : q.title}
+            title={unavailableInThisMode(q) ? q.title + ' — unavailable in lightweight mode' : (flagged[q.id] ? 'Flagged: ' : '') + q.title}
           >{i + 1}</button>
         {/each}
       </div>
@@ -407,15 +490,28 @@
                 </div>
                 <h2 class="text-base font-semibold text-[#eef0f5]">{currentQuestion.title}</h2>
               </div>
-              <span class="shrink-0 text-xs bg-[#4a5169] text-slate-400 px-2 py-1 rounded font-mono">
-                {currentQuestion.weight}pt{currentQuestion.weight !== 1 ? 's' : ''}
+              <span class="shrink-0 text-xs bg-[#4a5169] text-slate-300 px-2 py-1 rounded font-mono" title="{currentQuestion.weight} points">
+                Weight {weightPct(currentQuestion)}%
               </span>
             </div>
 
             {#if currentQuestion.context}
-              <div class="text-xs text-slate-400">
-                Context: <code class="text-slate-400">{currentQuestion.context}</code>
+              <div role="presentation" onclick={copyClick} class="rounded border border-[#3b82f6]/60 bg-[#1e3a8a]/30 p-2.5 text-xs text-slate-300 [&_code]:cursor-pointer">
+                Solve this task on: <code class="bg-[#2a2f42] px-1 rounded text-slate-100">{currentQuestion.context}</code>
               </div>
+            {/if}
+
+            {#if isExam}
+              {@const st = progress[currentQuestion.id]?.status}
+              {#if !st || st === 'preparing'}
+                <div class="rounded border border-slate-600 bg-slate-800/40 p-2.5 text-xs text-slate-400">
+                  The environment for this task is being prepared. You can read the task now.
+                </div>
+              {:else if st === 'setup-failed'}
+                <div class="rounded border border-red-900 bg-red-950/30 p-2.5 text-xs text-red-300">
+                  Setup of this task failed. Skip it, or end the exam and use Practice mode for this task.
+                </div>
+              {/if}
             {/if}
 
             {#if currentUnavailable}
@@ -432,7 +528,7 @@
               {@html md(currentQuestion.description)}
             </div>
 
-            {#if currentQuestion.hint}
+            {#if currentQuestion.hint && !isExam}
               <details class="group">
                 <summary class="cursor-pointer text-xs text-[#3b82f6] hover:text-blue-300 select-none">
                   Show hint
@@ -448,7 +544,7 @@
             {/if}
 
             <!-- CKS hub: per-task scaffold guide from 07-scaffolds.md -->
-            {#if guideFor(currentQuestion.id).length}
+            {#if !isExam && guideFor(currentQuestion.id).length}
               {#key currentQuestion.id}
                 <details class="group">
                   <summary class="cursor-pointer text-xs text-amber-400 hover:text-amber-300 select-none">
@@ -488,6 +584,10 @@
                     Unavailable in this mode
                   {:else if checkResult.isSetup}
                     {checkResult.passed ? 'Environment ready' : 'Setup failed'}
+                  {:else if checkResult.checks_total}
+                    {checkResult.passed ? 'PASSED' : checkResult.checks_passed > 0 ? 'PARTIAL' : 'FAILED'}
+                    · {checkResult.checks_passed}/{checkResult.checks_total} checks
+                    · {(Math.round((currentQuestion.weight * checkResult.checks_passed / checkResult.checks_total) * 10) / 10)} of {currentQuestion.weight} pts
                   {:else}
                     {checkResult.passed ? 'PASSED' : 'FAILED'}
                   {/if}
@@ -501,6 +601,17 @@
 
           <!-- Action bar -->
           <div class="flex-none border-t border-[#5a6280] p-3 flex gap-2">
+            {#if isExam}
+            <button
+              onclick={() => toggleFlag(currentQuestion)}
+              class="flex-1 py-1.5 text-xs rounded border transition-colors {flagged[currentQuestion.id] ? 'border-amber-500 text-amber-300 bg-amber-900/30' : 'border-[#5a6280] text-slate-400 hover:text-slate-200'}"
+            >{flagged[currentQuestion.id] ? 'Flagged for review' : 'Flag for review'}</button>
+            <button
+              onclick={() => selectQuestion(Math.min(currentIdx + 1, questions.length - 1))}
+              disabled={currentIdx >= questions.length - 1}
+              class="flex-1 py-1.5 text-xs rounded bg-[#3b82f6] hover:bg-[#2563eb] text-white font-medium transition-colors disabled:opacity-50"
+            >Next task</button>
+            {:else}
             <button
               onclick={setupEnv}
               disabled={setting_up || currentUnavailable}
@@ -511,6 +622,7 @@
               disabled={checking || currentUnavailable}
               class="flex-1 py-1.5 text-xs rounded bg-[#3b82f6] hover:bg-[#2563eb] text-white font-medium transition-colors disabled:opacity-50"
             >{checking ? 'Checking…' : 'Check Answer'}</button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -575,15 +687,23 @@
 <!-- ── Results ─────────────────────────────────────────────────────────── -->
 {:else if view === 'results'}
   <div class="h-screen flex flex-col items-center justify-start overflow-y-auto py-12 px-4 gap-8">
+    {#if !session?.graded_at}
+      <div class="text-center space-y-2">
+        <div class="text-slate-200 text-lg">Grading all tasks…</div>
+        <div class="text-slate-500 text-sm">Like the real exam, every task is checked after the end. This takes a minute or two.</div>
+      </div>
+    {:else}
+    {@const pct = Math.round((score / (totalPoints || 1)) * 100)}
     <div class="text-center">
       <div class="text-4xl font-bold text-white mb-1">
-        <span class="text-[#3b82f6]">{score}</span>
-        <span class="text-slate-400 text-2xl">/{totalPoints}</span>
+        <span class="{pct >= 67 ? 'text-green-400' : 'text-red-400'}">{pct}%</span>
       </div>
-      <div class="text-slate-400 text-sm">
-        {session?.profile ? examLabel(session.profile) : ''} — {Math.round((score / (totalPoints || 1)) * 100)}% score
+      <div class="text-slate-300 text-sm mb-1">{pct >= 67 ? 'PASS' : 'FAIL'} (pass mark 67%) · {score} of {totalPoints} points</div>
+      <div class="text-slate-500 text-xs">
+        {session?.profile ? examLabel(session.profile) : ''} · {session?.exam_mode ? 'Real exam mode' : 'Practice mode'}
       </div>
     </div>
+    {/if}
 
     <div class="w-full max-w-lg space-y-2">
       {#each questions as q, i}
@@ -593,14 +713,21 @@
           <div class="w-6 h-6 rounded flex items-center justify-center text-xs font-mono shrink-0 mt-0.5
             {unavailable ? 'bg-[#4a5169] text-slate-600' :
              p?.status === 'passed' ? 'bg-green-700 text-green-100' :
+             p?.status === 'partial' ? 'bg-yellow-700 text-yellow-100' :
              p?.status === 'failed' ? 'bg-red-800 text-red-100' :
              'bg-[#4a5169] text-slate-400'}"
           >{i + 1}</div>
           <div class="flex-1 min-w-0">
             <div class="text-sm text-slate-300">{q.title}</div>
             <div class="text-xs text-slate-500 mt-0.5">
-              {unavailable ? 'Unavailable in lightweight mode — excluded from scoring' : `${q.weight} pt${q.weight !== 1 ? 's' : ''}`}
+              {unavailable ? 'Unavailable in lightweight mode — excluded from scoring' : `Weight ${weightPct(q)}%` + (p?.checks_total ? ` · ${p.checks_passed}/${p.checks_total} checks` : '')}
             </div>
+            {#if p?.output && p.status !== 'passed' && session?.graded_at}
+              <details class="mt-1">
+                <summary class="text-xs text-slate-400 cursor-pointer">What failed</summary>
+                <pre class="text-[11px] text-slate-400 whitespace-pre-wrap mt-1">{p.output}</pre>
+              </details>
+            {/if}
           </div>
           <div class="text-xs font-medium shrink-0 mt-0.5
             {unavailable ? 'text-slate-600' :
@@ -608,7 +735,7 @@
              p?.status === 'failed' ? 'text-red-400' :
              'text-slate-500'}"
           >
-            {unavailable ? 'N/A' : p?.status === 'passed' ? '+'+q.weight : p?.status === 'failed' ? '0' : '—'}
+            {unavailable ? 'N/A' : p?.checks_total || p?.status === 'passed' ? (Math.round(pointsFor(q) * 10) / 10) + ' / ' + q.weight : '—'}
           </div>
         </div>
       {/each}
