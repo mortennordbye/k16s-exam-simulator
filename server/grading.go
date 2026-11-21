@@ -169,13 +169,24 @@ func applyBaseline(r CheckResult, baseline []int) CheckResult {
 	for _, s := range r.FailedSites {
 		now[s] = true
 	}
+	base := map[int]bool{}
 	p := 0
 	for _, b := range baseline {
+		base[b] = true
 		if !now[b] {
 			p++
 		}
 	}
-	r.Checks, r.Total = p, len(baseline)
+	// Guard checks ("do not delete X") pass after setup, so they are not in
+	// the baseline. If one fails now, the candidate broke something: count
+	// it as a lost item, so destructive shortcuts never give full points.
+	total := len(baseline)
+	for _, s := range r.FailedSites {
+		if !base[s] {
+			total++
+		}
+	}
+	r.Checks, r.Total = p, total
 	return r
 }
 

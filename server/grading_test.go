@@ -69,8 +69,8 @@ func TestApplyBaseline(t *testing.T) {
 	if got.Checks != 1 || got.Total != 2 {
 		t.Fatalf("want 1/2, got %d/%d", got.Checks, got.Total)
 	}
-	if statusFor(applyBaseline(CheckResult{Checks: 1, Total: 3, FailedSites: []int{1, 2}}, []int{3})) != "passed" {
-		t.Fatal("baseline check passing should be passed")
+	if statusFor(applyBaseline(CheckResult{Passed: true, Checks: 3, Total: 3}, []int{3})) != "passed" {
+		t.Fatal("all checks passing should be passed")
 	}
 }
 
@@ -82,5 +82,13 @@ func TestSiteNumbers(t *testing.T) {
 	}
 	if contains(r.Output, "FAIL@") {
 		t.Fatalf("site numbers must not show: %q", r.Output)
+	}
+}
+
+func TestBrokenGuardCounts(t *testing.T) {
+	// baseline: work checks 2,3. Now 2,3 pass but guard 1 fails.
+	got := applyBaseline(CheckResult{Checks: 2, Total: 3, FailedSites: []int{1}}, []int{2, 3})
+	if got.Checks != 2 || got.Total != 3 || statusFor(got) == "passed" {
+		t.Fatalf("broken guard must cost points: got %d/%d %s", got.Checks, got.Total, statusFor(got))
 	}
 }
