@@ -1,6 +1,6 @@
 # CKS hub (study folder)
 
-Copy of the study folder that drives this fork (plan, drills, scaffolds, lab notes, Makefile). The Makefile expects this repo at `repos/k16s-exam-simulator` next to it.
+Copy of the study folder that drives this fork (plan, drills, scaffolds, lab notes, Makefile). To use it: copy this folder to `~/Documents/CKS` and clone this repo into `~/Documents/CKS/repos/k16s-exam-simulator`. Not included: the personal profile (01-profile.md).
 
 
 Start here. Run `make` in this folder to see all commands (lab, plan, docs).
@@ -16,8 +16,12 @@ Start here. Run `make` in this folder to see all commands (lab, plan, docs).
 | [06-lab-setup.md](06-lab-setup.md) | How the lab is built, local patches, decisions, known limits. |
 | `repos/k16s-exam-simulator` | The lab: your fork of K16S (https://github.com/mortennordbye/k16s-exam-simulator). |
 
-## Today
+## Next time (start here)
 
-1. `make up`, then `make exam`. Questions left, remote desktop right, like the real exam.
-2. Buy the CKS (not "CKS-SINGLE") by 2026-12-01. Book 2026-12-17.
-3. Start Day 2 in `04-study-plan.md`.
+1. `cd ~/Documents/CKS && make up` (starts both lab VMs, about 1 min when they exist).
+2. `make today` shows today's session. `make exam` opens the exam UI in Firefox.
+3. Practice mode for sessions, Real exam mode for mocks. Write misses in the log in `04-study-plan.md`.
+4. `make stop` when you finish (frees about 12 GB RAM).
+
+If the lab is broken: `make rebuild` (about 10 min). Lab source: https://github.com/mortennordbye/k16s-exam-simulator (`main`).
+Buy the exam by 2026-12-01 (not CKS-SINGLE) and book 2026-12-17.
