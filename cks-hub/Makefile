@@ -2,28 +2,29 @@
 SHELL := /bin/bash
 K16S_DIR := repos/k16s-exam-simulator
 K16S := $(K16S_DIR)/local/k16s-local
-# Exam-like lab: CKS mocks, Kubernetes v1.37 (exam version), 2 workers, remote desktop.
-K16S_FLAGS := --profile cks --k8s 1.37 --workers 2 --desktop --cpus 4 --memory 8 --disk 40
+# Exam-like lab: CKS mocks, Kubernetes v1.37 (exam version), 2 workers, remote desktop,
+# plus a second cluster cilium-cp (Cilium, Kubernetes v1.36, VM k16s-cilium: 2 CPU, 4 GB).
+K16S_FLAGS := --profile cks --k8s 1.37 --workers 2 --desktop --cpus 4 --memory 8 --disk 40 --cilium
 UI := http://localhost:8080/
 DESKTOP := 'http://localhost:8080/desktop/vnc.html?autoconnect=true&resize=remote&reconnect=true&path=desktop/websockify'
 TERMINAL := http://localhost:8080/terminal/
 
 .DEFAULT_GOAL := help
-.PHONY: help today up stop status exam desktop terminal ssh password rebuild destroy guide ui push clean plan scaffolds drills facts docs killercoda
+.PHONY: help today up stop status exam desktop terminal ssh ssh-cilium password rebuild rebuild-cilium destroy guide ui push clean plan scaffolds drills facts docs killercoda
 
 help: ## Show the commands
 	@echo "CKS hub. Exam target 2026-12-17."
 	@echo
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-11s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-15s %s\n", $$1, $$2}'
 
 today: ## Show the plan row for today
 	@d=$$(date +%m-%d); grep -E "\| [A-Z][a-z]{2} $$d \||\| $$d" 04-study-plan.md || echo "No row for $$d. Open 04-study-plan.md (make plan)."
 
-up: ## Start the lab (creates it on the first run, about 10 min)
+up: ## Start the lab, both VMs (creates them on the first run, about 10 min)
 	@$(K16S) up $(K16S_FLAGS)
 	@$(MAKE) --no-print-directory clean
 
-stop: ## Stop the lab and free 8 GB RAM (state is kept)
+stop: ## Stop the lab, both VMs, and free 12 GB RAM (state is kept)
 	@$(K16S) stop
 
 status: ## Show the lab state, URLs and candidate password
@@ -38,17 +39,23 @@ desktop: ## Remote desktop alone, full screen (no questions)
 terminal: ## Open the browser terminal in Firefox
 	@open -a Firefox $(TERMINAL)
 
-ssh: ## Root shell on the control plane (then: ssh node01 / ssh node02)
+ssh: ## Root shell on the control plane (then: ssh node01 / ssh node02 / ssh cilium-cp)
 	@$(K16S) ssh --root
+
+ssh-cilium: ## Root shell on cilium-cp (second cluster, Cilium)
+	@$(K16S) ssh --cilium --root
 
 password: ## Show the candidate password
 	@limactl shell k16s -- sudo cat /etc/k16s/candidate-password
 
-rebuild: ## Delete the lab and build it again from zero (about 10 min)
+rebuild: ## Delete the lab and build it again from zero, both VMs (about 10 min)
 	@$(K16S) destroy --yes
 	@$(MAKE) --no-print-directory up
 
-destroy: ## Delete the lab VM
+rebuild-cilium: ## Build only cilium-cp again at v1.36 (to repeat the upgrade task, about 3 min)
+	@$(K16S) cilium-rebuild
+
+destroy: ## Delete the lab VMs
 	@$(K16S) destroy --yes
 
 guide: ## Copy 07-scaffolds.md into the exam UI guide and rebuild the UI

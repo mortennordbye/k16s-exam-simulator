@@ -2,7 +2,7 @@ id: 06-aa-deny-tmp
 requires: heavy
 title: Load an AppArmor Profile and Apply It by Its Name
 weight: 5
-context: controlplane
+context: ssh controlplane
 description: |
   A complete AppArmor profile is in the file `/opt/cks2-apparmor/profile` on `controlplane`. It is not loaded.
 

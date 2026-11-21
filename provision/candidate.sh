@@ -26,15 +26,23 @@ cp /root/.kube/config /home/candidate/.kube/config
 chown -R candidate:candidate /home/candidate/.kube
 log_ok "kubeconfig copied for candidate"
 
-# Limited sudo — no shell escalation
+# CKS hub: like the real exam, "sudo -i" works on the task hosts. Host
+# controlplane and host base are the same VM here, so sudo works on base too.
 cat > /etc/sudoers.d/candidate <<'EOF'
-candidate ALL=(root) NOPASSWD: /usr/bin/kubectl, /usr/sbin/etcdctl, /usr/local/bin/etcdctl
+candidate ALL=(ALL) NOPASSWD: ALL
 EOF
 chmod 440 /etc/sudoers.d/candidate
 
 su - candidate -c 'ssh-keygen -t ed25519 -N "" -f /home/candidate/.ssh/id_ed25519 -C candidate@controlplane' \
   2>/dev/null || true
 CANDIDATE_PUBKEY=$(cat /home/candidate/.ssh/id_ed25519.pub)
+
+# "ssh controlplane" logs in as candidate on this same VM (see the shell
+# setup below): the candidate key must open its own account.
+touch /home/candidate/.ssh/authorized_keys
+grep -qxF "${CANDIDATE_PUBKEY}" /home/candidate/.ssh/authorized_keys \
+  || echo "${CANDIDATE_PUBKEY}" >> /home/candidate/.ssh/authorized_keys
+chmod 600 /home/candidate/.ssh/authorized_keys
 
 for i in $(seq 1 "${WORKER_COUNT}"); do
   NAME="node0${i}"
@@ -53,9 +61,10 @@ mkdir -p /home/candidate/.ssh
 cat > /home/candidate/.ssh/config <<EOF
 Host controlplane
   HostName 127.0.0.1
-  User root
+  User candidate
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
+  LogLevel ERROR
 
 EOF
 
@@ -68,31 +77,57 @@ Host ${NAME}
   User root
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
+  LogLevel ERROR
 
 EOF
 done
 chmod 600 /home/candidate/.ssh/config
 chown -R candidate:candidate /home/candidate/.ssh
 
+# CKS hub: exam host flow. A local login (desktop terminal, web terminal) is
+# host "base": no kubectl, like the real exam. "ssh controlplane" logs in to
+# this same VM over ssh: then kubectl, alias k and completion work.
 cat >> /home/candidate/.bashrc <<'BASHRC'
-
-export KUBECONFIG=/home/candidate/.kube/config
-
-source /usr/share/bash-completion/bash_completion 2>/dev/null || true
-source <(kubectl completion bash) 2>/dev/null || true
-alias k=kubectl
-complete -F __start_kubectl k 2>/dev/null || true
 
 export EDITOR=vim
 alias vi=vim
 export ETCDCTL_API=3
 
-alias kn='kubectl config set-context --current --namespace'
-alias kgp='kubectl get pods -o wide'
-alias kd='kubectl describe'
-alias krm='kubectl delete'
+if [[ -n "${SSH_CONNECTION:-}" ]]; then
+  # host controlplane
+  export KUBECONFIG=/home/candidate/.kube/config
+  source /usr/share/bash-completion/bash_completion 2>/dev/null || true
+  source <(kubectl completion bash) 2>/dev/null || true
+  alias k=kubectl
+  complete -o default -F __start_kubectl k 2>/dev/null || true
+  PS1='\u@controlplane:\w\$ '
+else
+  # host base
+  unset KUBECONFIG
+  kubectl() {
+    echo "kubectl is not available on host base. Use the ssh command of the task, for example: ssh controlplane" >&2
+    return 127
+  }
+  PS1='\u@base:\w\$ '
+fi
 
 BASHRC
+
+# root ("sudo -i" on controlplane): kubectl, alias k and completion.
+sed -i '/^# >>> k16s exam shell >>>/,/^# <<< k16s exam shell <<</d' /root/.bashrc
+cat >> /root/.bashrc <<'BASHRC'
+# >>> k16s exam shell >>>
+export KUBECONFIG=/root/.kube/config
+source /usr/share/bash-completion/bash_completion 2>/dev/null || true
+source <(kubectl completion bash) 2>/dev/null || true
+alias k=kubectl
+complete -o default -F __start_kubectl k 2>/dev/null || true
+export EDITOR=vim
+PS1='\u@controlplane:\w\$ '
+# <<< k16s exam shell <<<
+BASHRC
+
+bash "$(dirname "$0")/yq.sh"
 
 cat > /home/candidate/.vimrc <<'EOF'
 set expandtab

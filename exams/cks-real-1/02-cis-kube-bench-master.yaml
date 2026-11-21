@@ -1,7 +1,7 @@
 id: 02-cis-kube-bench-master
 title: Fix kube-bench Control Plane Findings
 weight: 5
-context: controlplane
+context: ssh controlplane
 description: |
   Run kube-bench for the control plane (`kube-bench run --targets master`) and save the output to `/opt/cks3-cis/kube-bench-master.txt`.
 

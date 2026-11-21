@@ -1,7 +1,7 @@
 id: b11-ingress-tls
 title: Secure an Ingress with TLS
 weight: 4
-context: ""
+context: ssh controlplane
 description: |
   Namespace `shop` has a deployment `shop` and a service `shop-svc` (port `80`).
   A certificate and key for `shop.k16s.local` exist at `/opt/cks-ingress/shop.crt` and `/opt/cks-ingress/shop.key`.

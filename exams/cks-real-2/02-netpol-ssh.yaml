@@ -1,7 +1,7 @@
 id: 02-netpol-ssh
 title: Restrict SSH Access by CIDR with Exception
-weight: 4
-context: ""
+weight: 3
+context: ssh controlplane
 description: |
   In namespace `netpol-ssh`, create a NetworkPolicy named `allow-ssh-office` that:
 

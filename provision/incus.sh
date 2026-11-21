@@ -19,14 +19,18 @@ if ! cmd_exists incus; then
   die "Incus is not installed — run incus-init step first"
 fi
 
+# Read the lists into variables first: with pipefail, "incus ... | grep -q"
+# can fail when grep exits early and incus gets SIGPIPE.
 _incus_initialized() {
-  incus storage list 2>/dev/null | grep -q default \
-    && incus network list 2>/dev/null | grep -q incusbr0
+  local storage networks
+  storage=$(incus storage list --format csv 2>/dev/null) || return 1
+  networks=$(incus network list --format csv 2>/dev/null) || return 1
+  grep -q '^default,' <<< "${storage}" && grep -q '^incusbr0,' <<< "${networks}"
 }
 
-# The daemon can be briefly busy right after init (image prefetch), so
+# The daemon can be busy right after init (image prefetch), so
 # "incus storage list" fails for a moment. Wait before giving up.
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   _incus_initialized && break
   sleep 2
 done

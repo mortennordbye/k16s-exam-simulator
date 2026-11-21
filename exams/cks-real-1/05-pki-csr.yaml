@@ -1,7 +1,7 @@
 id: 05-pki-csr
 title: Create and Approve a Certificate Signing Request for a User
 weight: 5
-context: controlplane
+context: ssh controlplane
 description: |
   A private key for user **alice** exists at `/opt/cks-pki/alice.key`.
 

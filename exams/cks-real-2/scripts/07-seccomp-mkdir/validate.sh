@@ -33,9 +33,9 @@ print('ok')
 fi
 
 # Check pod is Running
-STATUS=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}' 2>/dev/null)
-if [[ "$STATUS" != "Running" ]]; then
-  echo "FAIL: pod $POD is not Running (status: ${STATUS:-not found})"
+STATUS=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}/{.spec.nodeName}' 2>/dev/null)
+if [[ "$STATUS" != "Running/controlplane" ]]; then
+  echo "FAIL: pod $POD is not Running on node controlplane (status/node: ${STATUS:-not found})"
   exit 1
 fi
 
@@ -65,7 +65,7 @@ sys.exit(1)
 fi
 
 # Behaviour: mkdir must fail in the running pod
-if [[ "$STATUS" != "Running" ]] || kubectl exec "$POD" -- mkdir "/tmp/k16s-probe-$RANDOM" >/dev/null 2>&1; then
+if [[ "${STATUS%%/*}" != "Running" ]] || kubectl exec "$POD" -- mkdir "/tmp/k16s-probe-$RANDOM" >/dev/null 2>&1; then
   echo "FAIL: mkdir still works in pod seccomp-mkdir: the profile is not active"
   exit 1
 fi

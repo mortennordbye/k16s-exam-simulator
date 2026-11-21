@@ -22,6 +22,8 @@ spec:
       labels:
         app: seccomp-app
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: controlplane
       containers:
       - name: app
         image: nginx:alpine

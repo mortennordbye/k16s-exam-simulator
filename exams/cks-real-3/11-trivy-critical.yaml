@@ -1,7 +1,7 @@
 id: 11-trivy-critical
 requires: heavy
 title: Remove Pods with Critical Image Vulnerabilities
-weight: 6
+weight: 8
 context: ssh controlplane
 description: |
   Namespace `scan` runs several pods.

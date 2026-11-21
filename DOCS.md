@@ -124,12 +124,12 @@ local/k16s-local <command>        # or: lightweight/k16s-lite <command>
 
 | Command | Effect |
 |---|---|
-| `up` | Create the VM/cluster and provision it. Flags: `--profile`, `--k8s`, `--workers`, `--desktop`/`--no-desktop`, `--cpus`, `--memory`, `--disk`, `--port` (laptop only, as applicable) |
+| `up` | Create the VM/cluster and provision it. Flags: `--profile`, `--k8s`, `--workers`, `--desktop`/`--no-desktop`, `--cpus`, `--memory`, `--disk`, `--port` (laptop only, as applicable). Laptop only: `--cilium` also builds the second cluster `cilium-cp` (see below), `--cilium-k8s` sets its version (default 1.36) |
 | `stop` | Suspend the VM/cluster - frees RAM/CPU, state preserved |
 | `start` | Resume from `stop` |
 | `restart` | `stop` then `start` |
 | `status` | Current state, plus the exam UI and terminal URLs |
-| `ssh` | Shell into the controlplane. Add `--root` for `sudo -i` |
+| `ssh` | Shell into the controlplane. Add `--root` for `sudo -i`, `--cilium` for the `cilium-cp` VM |
 | `logs [target]` | Tail logs. `target` is one of `server` (default), `kubelet`, `terminal`, or `desktop` (laptop only) |
 | `open` | Open the exam UI in your default browser |
 | `reset` | Wipe and re-provision from scratch. Add `--yes` to skip confirmation |
@@ -141,6 +141,18 @@ Laptop mode only:
 |---|---|
 | `snapshot` | Save a `clean` snapshot (qemu driver only, not supported on Lima's vz driver) |
 | `revert` | Restore the `clean` snapshot. Add `--yes` to skip confirmation |
+| `cilium-rebuild` | Delete and build only the `cilium-cp` VM again (for example to repeat the kubeadm upgrade task, which needs v1.36) |
+
+`stop`, `start`, `restart`, `status`, `reset` and `destroy` act on both VMs when `cilium-cp` exists.
+
+### Second cluster `cilium-cp` (laptop mode, `--cilium`)
+
+A second Lima VM `k16s-cilium` (2 CPU, 4 GB, 15 GB disk) with one kubeadm node `cilium-cp`: Kubernetes v1.36, Cilium 1.20.5 (cilium CLI v0.20.3) with WireGuard encryption, kube-proxy kept. It is the cluster for the Cilium tasks and the kubeadm upgrade task.
+
+- Network: both VMs use the Lima `user-v2` network (192.168.104.0/24). The lease is kept per MAC address, so the IPs stay the same after a restart. Tested on the vz driver (macOS).
+- `k16s-local` adds `cilium-cp` to `/etc/hosts` on the main VM and sets up ssh keys and ssh config for `root` and `candidate`. `setup.sh` and `validate.sh` run as root on the controlplane and run their commands with `ssh cilium-cp ...`.
+- On `cilium-cp`, root and candidate have kubectl (admin kubeconfig), alias `k`, completion and `yq`. candidate has `sudo -i`.
+- Pod CIDR `10.20.0.0/16`, service CIDR `10.96.0.0/12`. Guest ports are not forwarded to the host.
 
 `reset` destroys and recreates the whole VM/cluster rather than trying to reset kubeadm/Incus state in place - safer, since stale `/etc/kubernetes` or `/var/lib/kubelet` state is a known way to break a rejoin. `destroy` is a complete teardown by construction: deleting the Lima VM's disk, or running `kind delete cluster`, removes everything K16S ever touched.
 
@@ -278,7 +290,7 @@ All 🔒 questions below need AppArmor specifically.
 
 1. **Pick an exam and duration** in the UI (CKA 1, CKA 2, CKS 1, CKS 2, CKS 3, any duration).
 2. **Setup Env** - runs that question's `setup.sh` on the cluster, putting it into the broken/incomplete state the question describes.
-3. Work the problem in the **terminal** (`/terminal/`, a full `bash` session on the controlplane). `kubectl`, `helm`, `etcdctl`, `crictl` are all available. Workers are reachable with `ssh node01` / `ssh node02`.
+3. Work the problem in the **terminal**. Like the real exam, the terminal opens on host `base` with no kubectl. Each task names its host (`Solve this task on: ssh controlplane`). Run that ssh command, do the task there, then `exit` back to base. On the task hosts `kubectl`, alias `k`, completion, `yq`, `etcdctl` and `crictl` work, and `sudo -i` gives root. Workers are reachable with `ssh node01` / `ssh node02`.
 4. **Check Answer** - runs `validate.sh`, which inspects real cluster/API/filesystem state (not YAML syntax) and returns pass/fail with a specific reason.
 
 ### Server API
@@ -345,16 +357,16 @@ Swaps the VM and Incus for [kind](https://kind.sigs.k8s.io): the "Host VM" becom
   k16s-server.service    exam server on 127.0.0.1:8080
 
 /etc/nginx/sites-available/k16s   nginx config
-/etc/sudoers.d/candidate          limited kubectl/etcdctl sudo for the candidate user
+/etc/sudoers.d/candidate          full sudo for the candidate user (sudo -i, like the exam)
 ```
 
 ### Candidate environment
 
 - User: `candidate` (uid 1000)
-- Shell: bash, with kubectl completion, a `k` alias, vim/tmux config
-- kubeconfig: `/home/candidate/.kube/config`
-- `ssh node01` / `ssh node02` - key-based, root inside each worker container
-- `ssh controlplane` → the host itself, for tasks that need host-level access
+- Host `base`: the desktop terminal and the web terminal. No kubeconfig and no `k` alias; `kubectl` prints a hint. Host `base` and host `controlplane` are the same VM: a separate base VM costs RAM for no gain in a lab. The shell tells them apart by `SSH_CONNECTION`. Unlike the real exam, `sudo` also works on base.
+- `ssh controlplane` → candidate on the same VM over ssh: kubeconfig `/home/candidate/.kube/config`, kubectl completion, alias `k`, `yq`. `sudo -i` → root with the same tools.
+- `ssh node01` / `ssh node02` - key-based, root inside each worker container (LXC, no kubectl)
+- `ssh cilium-cp` → candidate on the second cluster (with `--cilium`), same tools, `sudo -i` works
 
 ### Key versions
 
@@ -389,7 +401,7 @@ YAML fields:
 | `id` | Matches the filename stem and the `scripts/<id>/` directory |
 | `title` | Shown in the exam UI |
 | `weight` | Relative scoring weight |
-| `context` | `controlplane` if the question needs host-level access; omit otherwise |
+| `context` | The host of the task as an ssh command, shown as "Solve this task on: ...": `ssh controlplane` or `ssh cilium-cp` |
 | `description` | Full question text, Markdown, shown to the candidate |
 | `hint` | Shown when the candidate asks for a hint |
 | `requires` | Set to `heavy` if the question needs a capability lightweight mode can't provide (e.g. AppArmor). Excludes it from lightweight-mode scoring |

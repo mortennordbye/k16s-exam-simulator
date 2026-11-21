@@ -1,7 +1,7 @@
 id: 02-verify-binaries
 requires: heavy
 title: Verify Platform Binaries
-weight: 5
+weight: 4
 context: ssh controlplane
 description: |
   Directory `/opt/candidate-binaries` holds Kubernetes binaries that were downloaded from an untrusted mirror.

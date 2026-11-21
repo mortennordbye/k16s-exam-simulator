@@ -15,6 +15,12 @@
 #   local/k16s-local destroy  [--yes]
 #   local/k16s-local snapshot
 #   local/k16s-local revert   [--yes]
+#   local/k16s-local cilium-rebuild [--cilium-k8s 1.36]
+#
+# CKS hub: --cilium on "up" also builds a second VM (k16s-cilium, host name
+# cilium-cp): one kubeadm node with Cilium and WireGuard, on the Lima user-v2
+# network shared with k16s. stop/start/restart/status/destroy/reset act on
+# both VMs when they exist. "ssh --cilium" opens a shell in the second VM.
 set -euo pipefail
 
 if [[ -t 1 ]]; then
@@ -48,6 +54,17 @@ DISK_GIB="30"
 HOST_PORT="8080"
 ASSUME_YES="false"
 SSH_ROOT="false"
+SSH_CILIUM="false"
+
+# Second exam cluster (CKS hub). Built only with --cilium.
+CILIUM="false"
+CILIUM_INSTANCE="k16s-cilium"
+CILIUM_TEMPLATE="${REPO_ROOT}/local/lima-cilium.yaml"
+CILIUM_K8S_VERSION="1.36"
+CILIUM_CPUS="2"
+CILIUM_MEMORY_GIB="4"
+CILIUM_DISK_GIB="15"
+CILIUM_LOG="${LIMA_HOME}/${CILIUM_INSTANCE}-provision.log"
 
 # ── Preflight ────────────────────────────────────────────────────────────
 
@@ -84,9 +101,11 @@ check_resources() {
     log_warn "Host has ${host_cpus} CPUs; the VM alone wants ${CPUS}. Things will be sluggish — pass --cpus to lower it."
   fi
 
-  local headroom=$((host_mem_gib - MEMORY_GIB))
+  local want_gib=${MEMORY_GIB}
+  [[ "${CILIUM}" == "true" ]] && want_gib=$((MEMORY_GIB + CILIUM_MEMORY_GIB))
+  local headroom=$((host_mem_gib - want_gib))
   if [[ "${host_mem_gib}" -gt 0 && "${headroom}" -lt 4 ]]; then
-    log_warn "Host has ${host_mem_gib}GB RAM; giving the VM ${MEMORY_GIB}GB leaves ~${headroom}GB for everything else on your laptop. Pass --memory to lower it if that's too tight."
+    log_warn "Host has ${host_mem_gib}GB RAM; giving the VMs ${want_gib}GB leaves ~${headroom}GB for everything else on your laptop. Pass --memory to lower it if that's too tight."
   fi
 }
 
@@ -98,6 +117,14 @@ instance_exists() {
 
 instance_status() {
   limactl list "${INSTANCE}" --format '{{.Status}}' 2>/dev/null || echo "Missing"
+}
+
+vm_exists() {
+  limactl list --format '{{.Name}}' 2>/dev/null | grep -qx "${1}"
+}
+
+vm_running() {
+  [[ "$(limactl list "${1}" --format '{{.Status}}' 2>/dev/null)" == "Running" ]]
 }
 
 save_port() {
@@ -120,6 +147,72 @@ render_template() {
     -e "s|__HOST_PORT__|${HOST_PORT}|g" \
     "${TEMPLATE}" > "${out}"
   echo "${out}"
+}
+
+render_cilium_template() {
+  local out
+  out="$(mktemp -t k16s-cilium-lima.XXXXXX.yaml)"
+  sed \
+    -e "s|__CPUS__|${CILIUM_CPUS}|g" \
+    -e "s|__MEMORY_GIB__|${CILIUM_MEMORY_GIB}|g" \
+    -e "s|__DISK_GIB__|${CILIUM_DISK_GIB}|g" \
+    -e "s|__REPO_ROOT__|${REPO_ROOT}|g" \
+    "${CILIUM_TEMPLATE}" > "${out}"
+  echo "${out}"
+}
+
+# ── Second exam cluster (cilium-cp) ──────────────────────────────────────
+
+# Creates (if missing) and provisions the k16s-cilium VM. Idempotent.
+cilium_build() {
+  if ! vm_exists "${CILIUM_INSTANCE}"; then
+    local rendered; rendered="$(render_cilium_template)"
+    limactl start --name "${CILIUM_INSTANCE}" --tty=false "${rendered}"
+    rm -f "${rendered}"
+  elif ! vm_running "${CILIUM_INSTANCE}"; then
+    limactl start "${CILIUM_INSTANCE}"
+  fi
+  limactl shell "${CILIUM_INSTANCE}" -- bash -lc \
+    "sudo env K16S_K8S_VERSION=${CILIUM_K8S_VERSION} bash \$HOME/k16s/provision/cilium-cp.sh"
+}
+
+# Lets the main VM reach cilium-cp: /etc/hosts entry, ssh keys and ssh config
+# for root (setup and check scripts) and candidate (ssh cilium-cp).
+cilium_link() {
+  vm_running "${INSTANCE}" || return 0
+  vm_running "${CILIUM_INSTANCE}" || return 0
+  log_step "Linking k16s and cilium-cp (ssh keys, /etc/hosts)"
+  local ip root_pub cand_pub
+  ip=$(limactl shell "${CILIUM_INSTANCE}" -- ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1 | head -1)
+  [[ -n "${ip}" ]] || die "Could not read the IP of ${CILIUM_INSTANCE}"
+  root_pub=$(limactl shell "${INSTANCE}" -- sudo bash -c \
+    'test -f /root/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N "" -f /root/.ssh/id_ed25519 -C root@controlplane; cat /root/.ssh/id_ed25519.pub')
+  cand_pub=$(limactl shell "${INSTANCE}" -- sudo cat /home/candidate/.ssh/id_ed25519.pub 2>/dev/null || true)
+  limactl shell "${CILIUM_INSTANCE}" -- sudo bash -c "
+    grep -qxF '${root_pub}' /root/.ssh/authorized_keys || echo '${root_pub}' >> /root/.ssh/authorized_keys
+    if [[ -n '${cand_pub}' ]]; then
+      grep -qxF '${cand_pub}' /home/candidate/.ssh/authorized_keys || echo '${cand_pub}' >> /home/candidate/.ssh/authorized_keys
+    fi"
+  limactl shell "${INSTANCE}" -- bash -lc "sudo bash \$HOME/k16s/provision/cilium-link.sh ${ip}"
+  log_ok "cilium-cp is ${ip}: 'ssh cilium-cp' works for root and candidate on k16s"
+}
+
+cilium_create_bg() {
+  log_step "Building the second cluster cilium-cp in the background (log: ${CILIUM_LOG})"
+  mkdir -p "$(dirname "${CILIUM_LOG}")"
+  ( cilium_build ) > "${CILIUM_LOG}" 2>&1 &
+  CILIUM_PID=$!
+}
+
+cilium_wait_bg() {
+  [[ -n "${CILIUM_PID:-}" ]] || return 0
+  log_step "Waiting for cilium-cp"
+  if wait "${CILIUM_PID}"; then
+    log_ok "cilium-cp provisioned"
+  else
+    tail -20 "${CILIUM_LOG}" >&2 || true
+    die "cilium-cp provisioning failed, see ${CILIUM_LOG}"
+  fi
 }
 
 # Builds the remote provisioning command. $HOME is intentionally left
@@ -160,15 +253,20 @@ cmd_up() {
     local status; status="$(instance_status)"
     if [[ "${status}" == "Running" ]]; then
       log_ok "k16s VM is already running"
-      print_urls
-      return 0
+    else
+      log_step "Resuming existing k16s VM"
+      limactl start "${INSTANCE}"
+      log_ok "VM resumed — systemd brings the exam services back up on its own"
     fi
-    log_step "Resuming existing k16s VM"
-    limactl start "${INSTANCE}"
-    log_ok "VM resumed — systemd brings the exam services back up on its own"
+    if [[ "${CILIUM}" == "true" ]]; then
+      cilium_build > "${CILIUM_LOG}" 2>&1 || { tail -20 "${CILIUM_LOG}" >&2; die "cilium-cp failed, see ${CILIUM_LOG}"; }
+      cilium_link
+    fi
     print_urls
     return 0
   fi
+
+  [[ "${CILIUM}" == "true" ]] && cilium_create_bg
 
   log_step "Creating k16s VM (${CPUS} vCPU / ${MEMORY_GIB}GB RAM / ${DISK_GIB}GB disk)"
   local rendered; rendered="$(render_template)"
@@ -179,6 +277,10 @@ cmd_up() {
 
   provision
   log_ok "K16S is ready"
+  if [[ "${CILIUM}" == "true" ]]; then
+    cilium_wait_bg
+    cilium_link
+  fi
   print_urls
 }
 
@@ -186,13 +288,21 @@ cmd_stop() {
   instance_exists || die "No k16s VM found — run 'k16s-local up' first"
   log_step "Suspending k16s VM"
   limactl stop "${INSTANCE}"
+  if vm_exists "${CILIUM_INSTANCE}" && vm_running "${CILIUM_INSTANCE}"; then
+    limactl stop "${CILIUM_INSTANCE}"
+    log_ok "cilium-cp stopped"
+  fi
   log_ok "Stopped — laptop resources freed, state preserved. Resume with 'k16s-local start'"
 }
 
 cmd_start() {
   instance_exists || die "No k16s VM found — run 'k16s-local up' first"
   log_step "Resuming k16s VM"
-  limactl start "${INSTANCE}"
+  vm_running "${INSTANCE}" || limactl start "${INSTANCE}"
+  if vm_exists "${CILIUM_INSTANCE}"; then
+    vm_running "${CILIUM_INSTANCE}" || limactl start "${CILIUM_INSTANCE}"
+    cilium_link
+  fi
   log_ok "Resumed"
   print_urls
 }
@@ -201,6 +311,11 @@ cmd_restart() {
   instance_exists || die "No k16s VM found — run 'k16s-local up' first"
   limactl stop "${INSTANCE}" 2>/dev/null || true
   limactl start "${INSTANCE}"
+  if vm_exists "${CILIUM_INSTANCE}"; then
+    limactl stop "${CILIUM_INSTANCE}" 2>/dev/null || true
+    limactl start "${CILIUM_INSTANCE}"
+    cilium_link
+  fi
   log_ok "Restarted"
   print_urls
 }
@@ -210,17 +325,39 @@ cmd_status() {
     log_info "No k16s VM exists yet — run 'k16s-local up'"
     return 0
   fi
-  limactl list "${INSTANCE}"
+  if vm_exists "${CILIUM_INSTANCE}"; then
+    limactl list "${INSTANCE}" "${CILIUM_INSTANCE}"
+  else
+    limactl list "${INSTANCE}"
+  fi
   [[ "$(instance_status)" == "Running" ]] && print_urls
 }
 
 cmd_ssh() {
-  instance_exists || die "No k16s VM found — run 'k16s-local up' first"
+  local target="${INSTANCE}"
+  [[ "${SSH_CILIUM}" == "true" ]] && target="${CILIUM_INSTANCE}"
+  vm_exists "${target}" || die "No ${target} VM found — run 'k16s-local up' first"
   if [[ "${SSH_ROOT}" == "true" ]]; then
-    limactl shell "${INSTANCE}" -- sudo -i
+    limactl shell "${target}" -- sudo -i
   else
-    limactl shell "${INSTANCE}"
+    limactl shell "${target}"
   fi
+}
+
+# Deletes and builds only the second cluster again (for example to practise
+# the kubeadm upgrade task once more: it needs cilium-cp at v1.36).
+cmd_cilium_rebuild() {
+  require_limactl
+  instance_exists || die "No k16s VM found — run 'k16s-local up --cilium' first"
+  log_step "Rebuilding cilium-cp (Kubernetes v${CILIUM_K8S_VERSION})"
+  if vm_exists "${CILIUM_INSTANCE}"; then
+    limactl stop "${CILIUM_INSTANCE}" --force 2>/dev/null || true
+    limactl delete "${CILIUM_INSTANCE}" --force
+  fi
+  vm_running "${INSTANCE}" || limactl start "${INSTANCE}"
+  cilium_build
+  cilium_link
+  log_ok "cilium-cp rebuilt"
 }
 
 cmd_logs() {
@@ -261,7 +398,13 @@ cmd_reset() {
   log_step "Destroying k16s VM"
   limactl stop "${INSTANCE}" --force 2>/dev/null || true
   limactl delete "${INSTANCE}" --force
+  if vm_exists "${CILIUM_INSTANCE}"; then
+    limactl stop "${CILIUM_INSTANCE}" --force 2>/dev/null || true
+    limactl delete "${CILIUM_INSTANCE}" --force
+    CILIUM="true"
+  fi
   log_ok "VM destroyed"
+  [[ "${CILIUM}" == "true" ]] && cilium_create_bg
 
   log_step "Recreating k16s VM"
   local rendered; rendered="$(render_template)"
@@ -271,18 +414,32 @@ cmd_reset() {
   log_ok "VM created and booted"
 
   provision
+  if [[ "${CILIUM}" == "true" ]]; then
+    cilium_wait_bg
+    cilium_link
+  fi
   log_ok "K16S reset complete"
   print_urls
 }
 
 cmd_destroy() {
-  instance_exists || { log_info "No k16s VM exists"; return 0; }
-  confirm "This deletes the k16s VM and all its data permanently. Continue?" \
+  if ! instance_exists && ! vm_exists "${CILIUM_INSTANCE}"; then
+    log_info "No k16s VM exists"; return 0
+  fi
+  confirm "This deletes the k16s VMs and all their data permanently. Continue?" \
     || { log_info "Aborted"; return 0; }
-  limactl stop "${INSTANCE}" --force 2>/dev/null || true
-  limactl delete "${INSTANCE}" --force
-  rm -f "${PORT_FILE}"
-  log_ok "k16s VM deleted"
+  if vm_exists "${CILIUM_INSTANCE}"; then
+    limactl stop "${CILIUM_INSTANCE}" --force 2>/dev/null || true
+    limactl delete "${CILIUM_INSTANCE}" --force
+    rm -f "${CILIUM_LOG}"
+    log_ok "${CILIUM_INSTANCE} VM deleted"
+  fi
+  if instance_exists; then
+    limactl stop "${INSTANCE}" --force 2>/dev/null || true
+    limactl delete "${INSTANCE}" --force
+    rm -f "${PORT_FILE}"
+    log_ok "k16s VM deleted"
+  fi
 }
 
 cmd_snapshot() {
@@ -305,7 +462,7 @@ cmd_revert() {
 }
 
 usage() {
-  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # ── Argument parsing ─────────────────────────────────────────────────────
@@ -326,6 +483,9 @@ while [[ $# -gt 0 ]]; do
     --port)    HOST_PORT="$2"; shift 2 ;;
     --yes|-y)  ASSUME_YES="true"; shift ;;
     --root)    SSH_ROOT="true"; shift ;;
+    --cilium)     CILIUM="true"; SSH_CILIUM="true"; shift ;;
+    --no-cilium)  CILIUM="false"; shift ;;
+    --cilium-k8s) CILIUM_K8S_VERSION="$2"; shift 2 ;;
     server|kubelet|terminal|desktop) LOG_TARGET="$1"; shift ;;
     *) die "Unknown option: $1" ;;
   esac
@@ -344,6 +504,7 @@ case "${SUBCOMMAND}" in
   destroy)  cmd_destroy ;;
   snapshot) cmd_snapshot ;;
   revert)   cmd_revert ;;
+  cilium-rebuild) cmd_cilium_rebuild ;;
   ""|help|-h|--help) usage ;;
   *) die "Unknown subcommand: ${SUBCOMMAND}\n\nRun 'k16s-local help' for usage." ;;
 esac

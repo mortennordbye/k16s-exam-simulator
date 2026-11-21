@@ -63,7 +63,7 @@ bash install.sh --laptop
 
 Boots a disposable Ubuntu VM with Lima and runs the same provisioner inside it, same kubeadm cluster, same Incus workers, same exam server. Your laptop's own OS is never touched. When it's done, open `http://localhost:8080/`.
 
-Manage it afterward with `local/k16s-local`: `stop` / `start` / `status` / `ssh` / `logs` / `reset` / `destroy`. Full command reference: [DOCS.md § Managing your environment](DOCS.md#managing-your-environment).
+Manage it afterward with `local/k16s-local`: `stop` / `start` / `status` / `ssh` / `logs` / `reset` / `destroy`. Add `--cilium` to `up` for a second cluster `cilium-cp` with Cilium (a second small VM, used by the Cilium and kubeadm upgrade tasks). Full command reference: [DOCS.md § Managing your environment](DOCS.md#managing-your-environment).
 
 ### Option B - lightweight, no VM at all (Docker + kind)
 

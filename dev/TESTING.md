@@ -90,3 +90,55 @@ Findings:
 - `10.10.0.0/16` is the worker node range (node01/node02 have 10.10.0.11/12), not the pod CIDR. real-3/01 now says "internal range".
 - The server wrapper keeps `set -o pipefail`: a check like `kubectl exec ... | grep -q` fails when kubectl exits non-zero. New checks capture output first.
 - Mock-only solutions: `dev/solutions/<profile>__<id>.sh` (13 files).
+
+## Exam environment (plan 03)
+
+Source: `plans/03-exam-env-match.md`. Tested on 2026-11-21. Lab: main VM `k16s` (controlplane v1.37.2, Calico,
+node01/node02 LXC) and second VM `k16s-cilium` (host `cilium-cp`, kubeadm v1.36.6, Cilium 1.20.5 with WireGuard,
+cilium CLI v0.20.3), both on the Lima user-v2 network (vz driver). Setup and check scripts run as root on controlplane
+and reach cilium-cp with `ssh cilium-cp`.
+
+Network: user-v2 gives one NIC per VM on 192.168.104.0/24. VM to VM traffic works on vz. The IPs stayed the same after
+`make stop` and `make up` (Lima keeps the lease per MAC address in `~/.lima/_networks/user-v2/leases.json`).
+
+New tasks (method as in "Review fixes": setup twice, wait 20 s, check must fail, reference solution, check must pass,
+then setup again and one tempting wrong answer):
+
+| Task | Checks | Setup (1st / 2nd) | After setup | Solution | Wrong answer (result) | Notes |
+|---|---|---|---|---|---|---|
+| b17-kubeadm-upgrade | 7 | 3 s / 3 s | 5/7 fail | pass (about 4 min) | kubeadm and control plane upgraded, node drained, kubelet and kubectl not upgraded, no uncordon: 4 fail (3, 4, 5, 7) | `kubeadm upgrade apply` takes about 4 min (image pulls). Repeat on a cluster at v1.37: setup prints "make rebuild-cilium", only check 7 (nodes.txt) fails, so only that item gives points. `make rebuild-cilium` takes about 160 s. |
+| b18-cilium-netpol | 6 | 6 s / 1 s | 3/6 fail | pass on v1.36 and on v1.37 | policies with only egressDeny (no allow): 3 guard checks fail (2, 4, 6) | In Cilium 1.20 a policy with only deny rules puts the pod into default deny for that direction. The solution uses `egress: [{toEntities: [all]}]` in one policy and `enableDefaultDeny: {egress: false}` in the other; both work. The "world" target is the main VM (nginx on port 80). |
+| b19-cilium-encryption | 4 | 14 s / 1 s | 3/4 fail | pass on v1.36 and on v1.37 | ConfigMap edited by hand, agent not restarted, hand-written file: check 2 fails | Found and fixed: `cilium upgrade --reuse-values` does not undo a hand edit of `cilium-config` when the Helm values do not change. Setup now also patches the ConfigMap. One node: WireGuard shows 0 peers. |
+
+Node-level tasks (item 4): every AppArmor, seccomp, Falco and gVisor task in the mocks and the bank runs its pods on
+`controlplane` (VM kernel). Changed: real-1/07 pins its deployment to controlplane; real-1/06, real-1/07, real-2/07
+and real-3/04 check the node in their existing pod check. Wrong answer "pod on node01/node02": real-1/06 3 fail,
+real-2/07 2 fail, real-3/04 1 fail. Falco and gVisor tasks were already pinned.
+
+Exam host flow (item 3), checked as candidate: the web terminal and the desktop terminal open on `base`
+(`kubectl` prints a hint, no `k`, no KUBECONFIG). `ssh controlplane` and `ssh cilium-cp` give kubectl, `k`,
+completion, yq and `sudo -i` (root has `k` too). `ssh node01` / `ssh node02` work (root).
+
+Mocks after the swap (each from a clean `make rebuild` of both VMs, real exam mode over the API, all reference
+solutions in task order with a wait for the apiserver after each, End Exam, wait for graded_at):
+
+| Mock | Tasks | Setup of all tasks | Run | Score | Swap |
+|---|---|---|---|---|---|
+| cks-real-1 | 17 | 71 s, none failed | 12 min | 98/98 | 08-cilium-encryption (6) replaces 08-psa-restricted |
+| cks-real-2 | 16 | 10 s, none failed | 14 min | 98/98 | 15-kubeadm-upgrade (7) replaces 15-immutable-container |
+| cks-real-3 | 15 | 61 s, none failed | 11 min | 98/98 | 10-cilium-netpol (6) replaces 10-static-analysis |
+
+The first run of cks-real-2 gave 97/98: the node check added to real-2/07 changed the value of `STATUS`, and the
+later mkdir check still compared it with "Running". Fixed, tested alone (pass, wrong answer fails), then the mock ran
+again from a clean rebuild: 98/98.
+
+New weights. real-2: 01 netpol-multi 5, 02 netpol-ssh 3, 04 rbac 8, 14 falco-rule-output 8, 16 audit 9. real-3:
+01 netpol-https-egress 6, 02 verify-binaries 4, 09 sbom 9, 11 trivy 8. Domains (CS, CH, SH, MV, SC, MR):
+real-1 16, 17, 9, 18, 19, 19; real-2 16, 15, 10, 20, 20, 17; real-3 16, 15, 10, 20, 17, 20. PSA stays in real-2 and
+real-3, immutable in real-1 and real-3, static analysis in real-1 and real-2.
+
+Findings:
+- `provision/incus.sh`: `incus storage list | grep -q default` under pipefail failed the first rebuild ("Incus is not
+  initialized"). grep exits early and incus gets SIGPIPE. Fixed: read the lists into variables first.
+- Cilium 1.20 lists Kubernetes 1.33 to 1.36 as tested. All Cilium tasks also pass on 1.37 (after the upgrade task).
+- No change to `server/`: remote hosts need only ssh from the controlplane.

@@ -1,7 +1,7 @@
 id: 16-immutable-container
 title: Make a Container Immutable
 weight: 6
-context: ""
+context: ssh controlplane
 description: |
   Deployment `frontend` in namespace `immutable` runs nginx. Make its containers immutable at runtime:
 

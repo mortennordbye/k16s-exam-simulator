@@ -1,7 +1,7 @@
 id: 01-netpol-https-egress
 title: Allow HTTPS Egress While Blocking Cloud Metadata and Private Ranges
-weight: 8
-context: ""
+weight: 6
+context: ssh controlplane
 description: |
   Namespace `netpol-external` contains pods with label `app=client`.
 
