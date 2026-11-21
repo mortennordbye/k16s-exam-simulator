@@ -1,9 +1,9 @@
 id: 07-seccomp-deploy
 title: Enable RuntimeDefault Seccomp on a Deployment
 weight: 3
-context: ""
+context: ssh controlplane
 description: |
-  A Deployment named `seccomp-app` exists in namespace `seccomp-apps`. It currently has no seccomp profile configured.
+  A Deployment named `seccomp-app` exists in namespace `seccomp-apps`. Its pods run on node `controlplane`. It currently has no seccomp profile configured.
 
   1. **Patch** the Deployment to apply `RuntimeDefault` seccomp at the **pod level**.
   2. Wait for the rollout to complete.

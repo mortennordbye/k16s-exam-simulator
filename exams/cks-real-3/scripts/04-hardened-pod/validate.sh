@@ -6,9 +6,9 @@ POD="hardened"
 PROFILE="k8s-no-proc-write"
 CTR="app"
 
-STATUS=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}/{.spec.containers[?(@.name=="app")].image}' 2>/dev/null)
-if [[ "$STATUS" != "Running/nginx:alpine" ]]; then
-  echo "FAIL: pod $POD is not Running with container app (image nginx:alpine) (got: ${STATUS:-not found})"
+STATUS=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}/{.spec.nodeName}/{.spec.containers[?(@.name=="app")].image}' 2>/dev/null)
+if [[ "$STATUS" != "Running/controlplane/nginx:alpine" ]]; then
+  echo "FAIL: pod $POD is not Running on node controlplane with container app (image nginx:alpine) (got: ${STATUS:-not found})"
   exit 1
 fi
 

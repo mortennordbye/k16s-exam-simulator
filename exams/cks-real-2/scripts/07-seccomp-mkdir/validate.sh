@@ -33,9 +33,9 @@ print('ok')
 fi
 
 # Check pod is Running
-STATUS=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}' 2>/dev/null)
-if [[ "$STATUS" != "Running" ]]; then
-  echo "FAIL: pod $POD is not Running (status: ${STATUS:-not found})"
+STATUS=$(kubectl get pod "$POD" -o jsonpath='{.status.phase}/{.spec.nodeName}' 2>/dev/null)
+if [[ "$STATUS" != "Running/controlplane" ]]; then
+  echo "FAIL: pod $POD is not Running on node controlplane (status/node: ${STATUS:-not found})"
   exit 1
 fi
 
