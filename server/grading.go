@@ -34,6 +34,7 @@ type CheckResult struct {
 var (
 	failSiteRe = regexp.MustCompile(`echo\s+["']?FAIL`)
 	setERe     = regexp.MustCompile(`(?m)^(\s*)set\s+-([a-zA-Z]+)(.*)$`)
+	pipefailRe = regexp.MustCompile(`(?m)^(\s*)set -([a-zA-Z]*)o pipefail\s*$`)
 	markerRe   = regexp.MustCompile(`(?m)^__K16S__ failed=(\d+)\s*$`)
 	// Each FAIL message gets its site number (FAIL@3:) so a check can be
 	// tracked between runs. The number is removed before display.
@@ -62,6 +63,16 @@ func wrapValidate(src string) string {
 			return m[1] + "set" + m[3]
 		}
 		return m[1] + "set -" + flags + m[3]
+	})
+	// pipefail makes "kubectl ... | grep -q x" fail for a correct answer
+	// (grep -q exits early, kubectl gets SIGPIPE). A check must depend only
+	// on its last command, so drop it.
+	src = pipefailRe.ReplaceAllStringFunc(src, func(line string) string {
+		m := pipefailRe.FindStringSubmatch(line)
+		if m[2] == "" {
+			return m[1] + ":"
+		}
+		return m[1] + "set -" + m[2]
 	})
 	n := 0
 	src = failEchoRe.ReplaceAllStringFunc(src, func(m string) string {

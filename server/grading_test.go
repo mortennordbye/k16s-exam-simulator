@@ -92,3 +92,17 @@ func TestBrokenGuardCounts(t *testing.T) {
 		t.Fatalf("broken guard must cost points: got %d/%d %s", got.Checks, got.Total, statusFor(got))
 	}
 }
+
+func TestNoPipefail(t *testing.T) {
+	for _, in := range []string{"set -eo pipefail", "set -euo pipefail", "set -o pipefail"} {
+		out := wrapValidate("#!/usr/bin/env bash\n" + in + "\n")
+		if contains(out, "pipefail") || contains(out, "set -e") {
+			t.Fatalf("%q -> %q", in, out)
+		}
+	}
+	// a grep -q pipeline must count as success even if the writer gets SIGPIPE
+	p := writeScript(t, "#!/usr/bin/env bash\nset -eo pipefail\nif ! yes | head -c 100000 | grep -q y; then\n  echo \"FAIL: pipe\"\n  exit 1\nfi\necho \"PASS: ok\"\n")
+	if r := runValidate(context.Background(), p); !r.Passed {
+		t.Fatalf("pipeline check must pass: %+v", r)
+	}
+}
