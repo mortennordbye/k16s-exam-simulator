@@ -24,6 +24,12 @@ _incus_initialized() {
     && incus network list 2>/dev/null | grep -q incusbr0
 }
 
+# The daemon can be briefly busy right after init (image prefetch), so
+# "incus storage list" fails for a moment. Wait before giving up.
+for _ in $(seq 1 30); do
+  _incus_initialized && break
+  sleep 2
+done
 if ! _incus_initialized; then
   die "Incus is not initialized — run incus-init step first"
 fi
