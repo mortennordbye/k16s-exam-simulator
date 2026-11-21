@@ -22,7 +22,7 @@ Time in total: about 14 short sessions (about 9 h) and 5 mocks (about 12 h with 
 
 ## Sessions
 
-Drill names in the lab: **New topics** = the 16 new tasks (b01 to b16); **Drill 1, 2, 3** = the original topic drills.
+Drill names in the lab: **New topics** = the 19 new tasks (b01 to b19; b17 to b19 run on the second cluster `cilium-cp`); **Drill 1, 2, 3** = the original topic drills.
 
 | # | Date | Topic | Lab tasks (Practice mode) |
 |---|---|---|---|
@@ -34,7 +34,7 @@ Drill names in the lab: **New topics** = the 16 new tasks (b01 to b16); **Drill 
 | 6 | Thu 11-26 | **seccomp** | Drill 1: 09 to 12 |
 | - | Fri 11-27 | free | |
 | 7 | Sat 11-28 | **kube-bench, kubelet, binaries** | Drill 3: kube-bench and kubelet tasks. New topics: b13 |
-| 8 | Sun 11-29 | **NetworkPolicy** (fast pass) | Drill 1: 01 to 05 |
+| 8 | Sun 11-29 | **NetworkPolicy** (fast pass) + **CiliumNetworkPolicy** (on `ssh cilium-cp`) | Drill 1: 01 to 05. New topics: b18 |
 | 9 | Mon 11-30 | **RBAC + ServiceAccount, PSA, Secrets** | New topics: b09, b08, b10 |
 | 10 | Tue 12-01 | **gVisor, immutable container, Ingress TLS**. **Buy the exam today** (not CKS-SINGLE), book 12-17. | New topics: b07, b12, b11 |
 | 11 | Wed 12-02 | **Supply chain**: Trivy, SBOM, kubesec, Dockerfile | New topics: b04, b05, b06 |
@@ -44,7 +44,7 @@ Drill names in the lab: **New topics** = the 16 new tasks (b01 to b16); **Drill 
 | K1 | Sun 12-06 | **killer.sh A**, 2 h. Read the solutions of what you missed. | killer.sh |
 | 13 | Mon 12-07 | Misses from M1 and K1 | the tasks you lost |
 | 14 | Tue 12-08 | Misses from M1 and K1 | the tasks you lost |
-| 15 | Wed 12-09 | Misses, then doc search speed (find each page in under 20 s) | |
+| 15 | Wed 12-09 | **Cilium encryption + kubeadm upgrade** (on `ssh cilium-cp`), then doc search speed | New topics: b19, b17. After b17: `make rebuild-cilium` |
 | - | Thu 12-10, Fri 12-11 | free | |
 | M2 | Sat 12-12 | **Lab mock 2**, Real exam mode | CKS Mock 2 |
 | K2 | Sun 12-13 | **killer.sh B** | killer.sh |

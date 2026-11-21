@@ -12,6 +12,7 @@ Start here. Run `make` in this folder to see all commands (lab, plan, docs).
 | [05-drills.md](05-drills.md) | The 14 core drills with commands and YAML. Practise these. |
 | [02-exam-facts.md](02-exam-facts.md) | Exam rules, weights, allowed docs, CKA renewal rule, traps. |
 | [03-tools-and-labs.md](03-tools-and-labs.md) | Simulators ranked, local lab recipe (Multipass + kubeadm). |
+| [08-exam-environment.md](08-exam-environment.md) | Real exam environment vs our lab: CNI, tools, topics, what not to train. |
 | [06-lab-setup.md](06-lab-setup.md) | How the lab is built, local patches, decisions, known limits. |
 | `repos/k16s-exam-simulator` | The lab: your fork of K16S (https://github.com/mortennordbye/k16s-exam-simulator). |
 
