@@ -722,10 +722,19 @@
             <div class="text-xs text-slate-500 mt-0.5">
               {unavailable ? 'Unavailable in lightweight mode — excluded from scoring' : `Weight ${weightPct(q)}%` + (p?.checks_total ? ` · ${p.checks_passed}/${p.checks_total} checks` : '')}
             </div>
-            {#if p?.output && p.status !== 'passed' && session?.graded_at}
-              <details class="mt-1">
-                <summary class="text-xs text-slate-400 cursor-pointer">What failed</summary>
-                <pre class="text-[11px] text-slate-400 whitespace-pre-wrap mt-1">{p.output}</pre>
+            {#if session?.graded_at && p?.checks_total}
+              {@const per = q.weight / p.checks_total}
+              {@const fails = (p.output || '').split('\n').filter(l => l.trim().startsWith('FAIL:')).map(l => l.trim().slice(5).trim())}
+              <details class="mt-1" open={p.status !== 'passed'}>
+                <summary class="text-xs text-slate-400 cursor-pointer">Items</summary>
+                <div class="mt-1 space-y-0.5 text-[11px]">
+                  {#if p.checks_passed > 0}
+                    <div class="text-green-400">✓ {p.checks_passed} item{p.checks_passed !== 1 ? 's' : ''} correct · +{Math.round(per * p.checks_passed * 10) / 10} pts</div>
+                  {/if}
+                  {#each fails as f}
+                    <div class="text-red-300">✗ {f} · −{Math.round(per * 10) / 10} pts</div>
+                  {/each}
+                </div>
               </details>
             {/if}
           </div>
