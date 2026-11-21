@@ -132,13 +132,14 @@
   // CKS hub: CKS only. Real exam mocks (cks-real-*) and topic drills (cks, cks2, cks3).
   let ckaProfiles = $derived([]);
   let realProfiles = $derived(profiles.filter(p => p.startsWith('cks-real')).sort());
-  let cksProfiles = $derived(profiles.filter(p => p.startsWith('cks') && !p.startsWith('cks-real') && p !== 'cks-bank').sort());
+  let cksProfiles = $derived(profiles.filter(p => p.startsWith('cks') && !p.startsWith('cks-real')).sort());
   function weightPct(q) { return Math.round((q.weight / (totalPoints || 1)) * 100); }
 
   function labelFor(p, group) {
     const sorted = [...group].sort();
+    if (p === 'cks-bank') return 'New topics';
     const prefix = p.startsWith('cks-real') ? 'Mock' : p.startsWith('cka') ? 'CKA' : 'Drill';
-    return `${prefix} ${sorted.indexOf(p) + 1}`;
+    return `${prefix} ${sorted.filter(x => x !== 'cks-bank').indexOf(p) + 1}`;
   }
 
   function examLabel(p) {
