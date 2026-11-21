@@ -50,6 +50,7 @@ sysctl --system -q 2>/dev/null || true'
   if incus exec "${CNAME}" -- which containerd &>/dev/null \
   && incus exec "${CNAME}" -- which kubeadm    &>/dev/null; then
     log_info "  ${CNAME}: containerd + kubeadm already installed"
+    incus exec "${CNAME}" -- bash -s < "$(dirname "$0")/registry-mirror.sh"
     return 0
   fi
 
@@ -94,7 +95,8 @@ https://pkgs.k8s.io/core:/stable:/v${K8S_VERSION}/deb/ /' \
     systemctl restart containerd
     systemctl enable kubelet
   "
-  log_ok "  ${CNAME}: containerd + kubeadm installed"
+  incus exec "${CNAME}" -- bash -s < "$(dirname "$0")/registry-mirror.sh"
+  log_ok "  ${CNAME}: containerd + kubeadm installed (Docker Hub via mirror.gcr.io)"
 }
 
 join_worker() {

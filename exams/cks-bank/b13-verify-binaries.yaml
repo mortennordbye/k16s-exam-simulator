@@ -1,0 +1,11 @@
+id: b13-verify-binaries
+requires: heavy
+title: Verify Platform Binaries
+weight: 4
+context: ssh controlplane
+description: |
+  Directory `/opt/candidate-binaries` holds Kubernetes binaries that were downloaded from an untrusted mirror.
+  The official SHA512 checksums are in `/opt/candidate-binaries/SHA512SUMS.txt`.
+
+  Delete every binary in `/opt/candidate-binaries` whose SHA512 checksum does not match the official one. Keep the binaries that match and keep `SHA512SUMS.txt`.
+hint: "`sha512sum` computes a checksum. `sha512sum -c` can compare many files at once."

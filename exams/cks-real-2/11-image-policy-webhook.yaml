@@ -1,0 +1,15 @@
+id: 11-image-policy-webhook
+requires: heavy
+title: Enable the ImagePolicyWebhook Admission Plugin
+weight: 8
+context: ssh controlplane
+description: |
+  An image review backend runs at `https://image-bouncer.k16s.local:8443/review`. It decides which container images may run.
+  An incomplete configuration for the kube-apiserver exists in `/etc/kubernetes/policywebhook/`.
+
+  1. Complete the configuration:
+     - `admission_config.yaml` must make the `ImagePolicyWebhook` plugin deny pods when the backend cannot be reached (do not allow by default).
+     - `kubeconf` must point to the backend URL above. The backend CA is `/etc/kubernetes/policywebhook/webhook-ca.crt`.
+  2. Enable the `ImagePolicyWebhook` admission plugin in the kube-apiserver on `controlplane` and use `/etc/kubernetes/policywebhook/admission_config.yaml` as the admission control configuration. Keep the plugins that are already enabled.
+  3. Test it: the backend denies images with the `latest` tag in namespace `team-red`. A pod with image `nginx:latest` in `team-red` must be rejected.
+hint: "Look at `--enable-admission-plugins` and `--admission-control-config-file`. The kube-apiserver container must be able to read the files in `/etc/kubernetes/policywebhook`."

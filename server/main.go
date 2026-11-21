@@ -31,8 +31,9 @@ func main() {
 
 	mux.HandleFunc("GET /api/status", handleStatus(db, questions, mode))
 	mux.HandleFunc("GET /api/session", handleGetSession(db))
-	mux.HandleFunc("POST /api/session/start", handleStartSession(db, questions))
-	mux.HandleFunc("POST /api/session/end", handleEndSession(db))
+	mux.HandleFunc("POST /api/session/start", handleStartSession(db, questions, examDir, mode))
+	mux.HandleFunc("POST /api/session/end", handleEndSession(db, questions, examDir, mode))
+	mux.HandleFunc("GET /api/session/last", handleLastSession(db))
 	mux.HandleFunc("GET /api/questions", handleListQuestions(questions))
 	mux.HandleFunc("POST /api/questions/{id}/check", handleCheck(db, questions, examDir, mode))
 	mux.HandleFunc("POST /api/questions/{id}/setup", handleSetup(db, examDir, questions, mode))

@@ -1,0 +1,17 @@
+id: 06-aa-deny-tmp
+requires: heavy
+title: Load an AppArmor Profile and Apply It by Its Name
+weight: 5
+context: controlplane
+description: |
+  A complete AppArmor profile is in the file `/opt/cks2-apparmor/profile` on `controlplane`. It is not loaded.
+
+  1. Load the profile on `controlplane`.
+  2. Find the name of the profile. It is not the same as the file name.
+  3. Create a Pod named `hosts-check` in namespace `apparmor-hosts`:
+     - Image: `busybox:1.37`, command: `sleep 3600`, container name: `app`
+     - `nodeName: controlplane`
+     - Apply the AppArmor profile to the container `app`
+
+  The pod must run and the profile must block writes to `/tmp` in the container.
+hint: "Load with `apparmor_parser -r -W <file>`. The name follows the word `profile` in the file (`aa-status` also lists it). Apply it with `securityContext.appArmorProfile` (type `Localhost`, `localhostProfile: <name>`)."

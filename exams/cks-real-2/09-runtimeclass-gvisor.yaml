@@ -1,0 +1,14 @@
+id: 09-runtimeclass-gvisor
+requires: heavy
+title: Run Workloads in a gVisor Sandbox
+weight: 7
+context: ssh controlplane
+description: |
+  The container runtime on node `controlplane` has a handler `runsc` (gVisor).
+
+  1. Create a `RuntimeClass` named `gvisor` that uses the handler `runsc`.
+  2. Change deployment `payments` in namespace `sandbox` so that its pods run with this RuntimeClass. Its pods already run on `controlplane`.
+  3. Run `dmesg` in one `payments` pod and save the output to `/opt/cks-gvisor/dmesg.txt`.
+
+  Do not change deployment `ledger`.
+hint: "The field is `spec.template.spec.runtimeClassName`. Inside a gVisor sandbox `dmesg` shows the gVisor kernel messages."

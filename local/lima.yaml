@@ -45,6 +45,14 @@ portForwards:
     hostIP: "127.0.0.1"
     hostPort: __HOST_PORT__
 
+# Local patch (CKS hub): the cloud image ships stale apt lists, so the
+# provisioner's apt-get install of gnupg2 fails on first run. Refresh them.
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      apt-get update -qq || true
+
 containerd:
   system: false
   user: false

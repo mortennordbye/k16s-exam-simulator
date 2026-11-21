@@ -227,6 +227,13 @@ cat > /home/candidate/.config/openbox/rc.xml <<'EOF'
       <action name="Execute"><command>__BROWSER_BIN__</command></action>
     </keybind>
   </keyboard>
+  <applications>
+    <!-- CKS hub: open every window maximized, so terminal and Firefox fill the desktop -->
+    <application class="*">
+      <maximized>yes</maximized>
+      <decor>yes</decor>
+    </application>
+  </applications>
 </openbox_config>
 EOF
 sed -i "s|__BROWSER_BIN__|${BROWSER_BIN}|" /home/candidate/.config/openbox/rc.xml

@@ -1,0 +1,12 @@
+id: 08-psa-restricted
+title: Enforce the Restricted Pod Security Standard
+weight: 7
+context: ""
+description: |
+  Namespace `secure-apps` runs deployment `web`.
+
+  1. Label namespace `secure-apps` so that Pod Security Admission **enforces** the `restricted` standard and also **warns** about `restricted` violations.
+  2. Change deployment `web` so that its pods are allowed by the `restricted` standard and all `2` replicas run. Keep the image.
+
+  No pod that breaks the `restricted` standard may stay in the namespace.
+hint: "Labels: `pod-security.kubernetes.io/<mode>=<level>`. Restricted needs runAsNonRoot, allowPrivilegeEscalation false, all capabilities dropped and a seccomp profile."
