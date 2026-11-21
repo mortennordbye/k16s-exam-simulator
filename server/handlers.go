@@ -70,11 +70,12 @@ func handleGetSession(db *sql.DB) http.HandlerFunc {
 }
 
 // POST /api/session/start   body: {"profile":"cka","duration_secs":7200}
-func handleStartSession(db *sql.DB, questions map[string][]Question) http.HandlerFunc {
+func handleStartSession(db *sql.DB, questions map[string][]Question, examDir, mode string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Profile      string `json:"profile"`
 			DurationSecs int    `json:"duration_secs"`
+			ExamMode     bool   `json:"exam_mode"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, 400, "invalid request body")
@@ -97,7 +98,7 @@ func handleStartSession(db *sql.DB, questions map[string][]Question) http.Handle
 		}
 
 		id := uuid.New().String()
-		if err := createSession(db, id, req.Profile, req.DurationSecs); err != nil {
+		if err := createSession(db, id, req.Profile, req.DurationSecs, req.ExamMode); err != nil {
 			writeError(w, 500, err.Error())
 			return
 		}
@@ -106,12 +107,75 @@ func handleStartSession(db *sql.DB, questions map[string][]Question) http.Handle
 			writeError(w, 500, err.Error())
 			return
 		}
+		// Real exam mode: every task is ready when the exam starts, like the
+		// real CKS. Set them all up in the background, in task order.
+		if req.ExamMode {
+			go prepareAll(db, examDir, id, questions[req.Profile], mode)
+		}
 		writeJSON(w, map[string]any{"session": session})
 	}
 }
 
+// prepareAll runs every task's setup.sh in order for an exam-mode session.
+func prepareAll(db *sql.DB, examDir, sessionID string, qs []Question, mode string) {
+	jobMu.Lock()
+	defer jobMu.Unlock()
+	for i := range qs {
+		q := &qs[i]
+		if unavailableReason(q, mode) != "" {
+			continue
+		}
+		s, _ := getSession(db, sessionID)
+		if s == nil || s.EndedAt != nil {
+			return
+		}
+		upsertProgress(db, sessionID, q.ID, "preparing", "")
+		ok, out := runSetup(examDir, s.Profile, q.ID)
+		status := "ready"
+		if !ok {
+			status = "setup-failed"
+		}
+		upsertProgress(db, sessionID, q.ID, status, out)
+	}
+}
+
+// gradeAll runs every task's check script after the exam ends.
+func gradeAll(db *sql.DB, examDir, sessionID string, qs []Question, mode string) {
+	jobMu.Lock()
+	defer jobMu.Unlock()
+	s, _ := getSession(db, sessionID)
+	if s == nil {
+		return
+	}
+	for i := range qs {
+		q := &qs[i]
+		if unavailableReason(q, mode) != "" {
+			continue
+		}
+		script := filepath.Join(examDir, s.Profile, "scripts", q.ID, "validate.sh")
+		if _, err := os.Stat(script); err != nil {
+			continue
+		}
+		r := runValidate(context.Background(), script)
+		upsertProgressScore(db, sessionID, q.ID, statusFor(r), r.Output, r.Checks, r.Total)
+	}
+	setGraded(db, sessionID)
+}
+
+// GET /api/session/last  (most recent session, ended or not; for results)
+func handleLastSession(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s, err := getLastSession(db)
+		if err != nil || s == nil {
+			writeError(w, 404, "no session")
+			return
+		}
+		writeJSON(w, s)
+	}
+}
+
 // POST /api/session/end
-func handleEndSession(db *sql.DB) http.HandlerFunc {
+func handleEndSession(db *sql.DB, questions map[string][]Question, examDir, mode string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		session, err := getActiveSession(db)
 		if err != nil || session == nil {
@@ -122,6 +186,8 @@ func handleEndSession(db *sql.DB) http.HandlerFunc {
 			writeError(w, 500, err.Error())
 			return
 		}
+		// Grade every task, like the real exam (results only at the end).
+		go gradeAll(db, examDir, session.ID, questions[session.Profile], mode)
 		session, _ = getSession(db, session.ID)
 		writeJSON(w, map[string]any{"session": session})
 	}
@@ -162,6 +228,10 @@ func handleCheck(db *sql.DB, questions map[string][]Question, examDir string, mo
 			writeJSON(w, map[string]any{"unavailable": true, "reason": reason})
 			return
 		}
+		if session.ExamMode {
+			writeError(w, 403, "real exam mode: tasks are graded after End Exam")
+			return
+		}
 
 		script := filepath.Join(examDir, session.Profile, "scripts", id, "validate.sh")
 		if _, err := os.Stat(script); err != nil {
@@ -169,26 +239,11 @@ func handleCheck(db *sql.DB, questions map[string][]Question, examDir string, mo
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-
-		cmd := exec.CommandContext(ctx, "bash", script)
-		cmd.Env = append(os.Environ(), "KUBECONFIG=/etc/kubernetes/admin.conf")
-		out, err := cmd.CombinedOutput()
-		passed := err == nil
-
-		status := "failed"
-		if passed {
-			status = "passed"
-		}
-		if dbErr := upsertProgress(db, session.ID, id, status, string(out)); dbErr != nil {
+		res := runValidate(r.Context(), script)
+		if dbErr := upsertProgressScore(db, session.ID, id, statusFor(res), res.Output, res.Checks, res.Total); dbErr != nil {
 			log.Printf("upsertProgress: %v", dbErr)
 		}
-
-		writeJSON(w, map[string]any{
-			"passed": passed,
-			"output": string(out),
-		})
+		writeJSON(w, res)
 	}
 }
 
@@ -209,13 +264,31 @@ func handleSetup(db *sql.DB, examDir string, questions map[string][]Question, mo
 			}
 		}
 
-		script := filepath.Join(examDir, session.Profile, "scripts", id, "setup.sh")
-		if _, err := os.Stat(script); err != nil {
-			writeJSON(w, map[string]any{"ok": true, "output": "No environment setup needed for this task."})
+		ok, out := runSetup(examDir, session.Profile, id)
+		if !ok {
+			writeJSON(w, map[string]any{"ok": false, "output": out})
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		// Mark as attempted so the question nav shows it's been started.
+		if dbErr := upsertProgress(db, session.ID, id, "attempted", ""); dbErr != nil {
+			log.Printf("upsertProgress: %v", dbErr)
+		}
+
+		writeJSON(w, map[string]any{"ok": true, "output": out})
+	}
+}
+
+// runSetup runs one task's setup.sh. Shared by the Setup Env button and the
+// exam-mode background prepare.
+func runSetup(examDir, profile, id string) (bool, string) {
+	{
+		script := filepath.Join(examDir, profile, "scripts", id, "setup.sh")
+		if _, err := os.Stat(script); err != nil {
+			return true, "No environment setup needed for this task."
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		beforeOpt := listOptEntries()
@@ -240,17 +313,7 @@ func handleSetup(db *sql.DB, examDir string, questions map[string][]Question, mo
 		// still have left a partially-built, inaccessible directory behind.
 		chownNewOptEntries(beforeOpt)
 
-		if err != nil {
-			writeJSON(w, map[string]any{"ok": false, "output": string(out)})
-			return
-		}
-
-		// Mark as attempted so the question nav shows it's been started.
-		if dbErr := upsertProgress(db, session.ID, id, "attempted", ""); dbErr != nil {
-			log.Printf("upsertProgress: %v", dbErr)
-		}
-
-		writeJSON(w, map[string]any{"ok": true, "output": string(out)})
+		return err == nil, string(out)
 	}
 }
 
