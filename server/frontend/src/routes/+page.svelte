@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { api } from '$lib/api.js';
+  import { guideFor, renderGuide, manifestsFor } from '$lib/guide.js'; // CKS hub
 
   // ── State ──────────────────────────────────────────────────────────────────
   let view       = $state('loading'); // loading | home | exam | results
@@ -19,8 +20,53 @@
 
   let timerInterval = null;
   let terminalIframe = $state(null);
-  let rightPanel = $state('terminal'); // terminal | desktop
-  let desktopLoaded = $state(false);
+  let rightPanel = $state('desktop'); // terminal | desktop (CKS hub: desktop first, like the real exam)
+  let desktopLoaded = $state(true);
+
+  // CKS hub: click-to-copy, like the real exam. Sends text to the noVNC
+  // desktop clipboard (same-origin iframe) and to the Mac clipboard.
+  let copiedMsg = $state('');
+  // CKS hub: draggable divider between question panel and desktop.
+  let leftPct = $state(25);
+  let dragging = $state(false);
+  function startDrag(e) {
+    dragging = true;
+    const move = (ev) => {
+      leftPct = Math.min(60, Math.max(15, (ev.clientX / window.innerWidth) * 100));
+    };
+    const up = () => {
+      dragging = false;
+      try { localStorage.setItem('k16s-left-pct', String(Math.round(leftPct))); } catch {}
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    e.preventDefault();
+  }
+  function sendToDesktop(text) {
+    if (!text) return;
+    try {
+      const doc = document.querySelector('iframe[title="Desktop"]')?.contentDocument;
+      const ta = doc?.getElementById('noVNC_clipboard_text');
+      if (ta) { ta.value = text; ta.dispatchEvent(new Event('change')); }
+    } catch (e) { /* desktop not loaded yet */ }
+  }
+  function copyClick(e) {
+    const el = e.target.closest('code, pre');
+    if (!el || e.target.closest('a')) return;
+    const text = el.innerText.trim();
+    navigator.clipboard?.writeText(text).catch(() => {});
+    sendToDesktop(text);
+    el.classList.add('ring-2', 'ring-green-400');
+    setTimeout(() => el.classList.remove('ring-2', 'ring-green-400'), 600);
+    copiedMsg = 'Copied: ' + (text.length > 40 ? text.slice(0, 40) + '...' : text);
+    setTimeout(() => (copiedMsg = ''), 1500);
+  }
+  function onCopy() {
+    const t = window.getSelection()?.toString();
+    if (t) sendToDesktop(t);
+  }
 
   function selectPanel(p) {
     rightPanel = p;
@@ -153,7 +199,12 @@
     }
   });
 
-  onDestroy(() => clearInterval(timerInterval));
+  onMount(() => {
+    document.addEventListener('copy', onCopy); // CKS hub
+    const saved = Number(localStorage.getItem('k16s-left-pct'));
+    if (saved >= 15 && saved <= 60) leftPct = saved;
+  });
+  onDestroy(() => { clearInterval(timerInterval); document.removeEventListener('copy', onCopy); });
 
   // ── Actions ────────────────────────────────────────────────────────────────
   async function startExam() {
@@ -307,7 +358,7 @@
 
     <p class="text-slate-500 text-xs">
       Open the <a href="/terminal/" target="_blank" class="text-slate-400 hover:text-slate-300 underline">terminal</a>
-      or the <a href="/desktop/vnc_lite.html?autoconnect=true&scale=true&reconnect=true&path=desktop/websockify" target="_blank" class="text-slate-400 hover:text-slate-300 underline">desktop</a>
+      or the <a href="/desktop/vnc.html?autoconnect=true&resize=scale&reconnect=true&path=desktop/websockify" target="_blank" class="text-slate-400 hover:text-slate-300 underline">desktop</a>
       before starting.
     </p>
   </div>
@@ -346,7 +397,7 @@
     <div class="flex-1 flex overflow-hidden">
 
       <!-- Question Panel -->
-      <div class="w-[30%] min-w-64 flex flex-col border-r border-[#5a6280] overflow-hidden">
+      <div style="width: {leftPct}%" class="min-w-48 flex flex-col overflow-hidden">
         {#if currentQuestion}
           <div class="flex-1 overflow-y-auto p-4 space-y-4">
             <div class="flex items-start justify-between gap-2">
@@ -377,7 +428,7 @@
               </div>
             {/if}
 
-            <div class="text-sm text-slate-300 leading-relaxed space-y-1 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_p]:my-1 [&_strong]:text-slate-200">
+            <div role="presentation" onclick={copyClick} class="[&_code]:cursor-pointer [&_code:hover]:ring-1 [&_code:hover]:ring-[#3b82f6] text-sm text-slate-300 leading-relaxed space-y-1 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_p]:my-1 [&_strong]:text-slate-200">
               {@html md(currentQuestion.description)}
             </div>
 
@@ -390,6 +441,38 @@
                   {currentQuestion.hint}
                 </div>
               </details>
+            {/if}
+
+            {#if copiedMsg}
+              <div class="fixed bottom-20 left-6 z-50 text-xs bg-green-900 text-green-100 border border-green-700 rounded px-3 py-2">{copiedMsg}. Paste in the desktop: Ctrl+Shift+V</div>
+            {/if}
+
+            <!-- CKS hub: per-task scaffold guide from 07-scaffolds.md -->
+            {#if guideFor(currentQuestion.id).length}
+              {#key currentQuestion.id}
+                <details class="group">
+                  <summary class="cursor-pointer text-xs text-amber-400 hover:text-amber-300 select-none">
+                    Show guide (where to copy from)
+                  </summary>
+                  <div role="presentation" onclick={copyClick} class="mt-2 space-y-3 [&_code]:cursor-pointer [&_pre]:cursor-pointer [&_code:hover]:ring-1 [&_code:hover]:ring-[#3b82f6]">
+                    {#each guideFor(currentQuestion.id) as g}
+                      <div class="text-xs text-slate-400 bg-[#3b4256] border border-[#5a6280] rounded p-3 leading-relaxed">
+                        <div class="text-amber-300 font-semibold mb-1">{g.num} {g.title}</div>
+                        {@html renderGuide(g.body)}
+                      </div>
+                    {/each}
+                    {#if manifestsFor(currentQuestion.id).length}
+                      <div class="text-xs text-slate-400 bg-[#3b4256] border border-[#5a6280] rounded p-3 leading-relaxed">
+                        <div class="text-amber-300 font-semibold mb-1">Full manifests (kubernetes.io examples). Click a block to copy it.</div>
+                        {#each manifestsFor(currentQuestion.id) as m}
+                          <div class="mt-3 mb-1 text-slate-300">{m.name}</div>
+                          <pre class="bg-[#161922] text-slate-200 p-2 rounded overflow-x-auto text-[11px] leading-snug">{m.code}</pre>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                </details>
+              {/key}
             {/if}
 
             {#if checkResult}
@@ -433,6 +516,10 @@
       </div>
 
       <!-- Terminal / Desktop -->
+      <!-- CKS hub: drag to resize, double-click to reset -->
+      <div role="separator" aria-orientation="vertical" tabindex="-1"
+        onpointerdown={startDrag} ondblclick={() => (leftPct = 25)}
+        class="w-1.5 shrink-0 cursor-col-resize bg-[#5a6280] hover:bg-[#3b82f6] {dragging ? 'bg-[#3b82f6]' : ''}"></div>
       <div class="flex-1 flex flex-col overflow-hidden">
         <div class="flex-none flex gap-1 bg-[#454c63] border-b border-[#5a6280] px-2 py-1.5">
           <button
@@ -449,7 +536,7 @@
           >Desktop</button>
         </div>
 
-        <div class="flex-1 relative">
+        <div class="flex-1 relative {dragging ? 'pointer-events-none' : ''}">
           <iframe
             bind:this={terminalIframe}
             src="/terminal/"
@@ -473,7 +560,7 @@
 
           {#if desktopLoaded}
             <iframe
-              src="/desktop/vnc_lite.html?autoconnect=true&scale=true&reconnect=true&path=desktop/websockify"
+              src="/desktop/vnc.html?autoconnect=true&resize=remote&reconnect=true&path=desktop/websockify"
               title="Desktop"
               class="absolute inset-0 w-full h-full border-0"
               style={rightPanel === 'desktop' ? '' : 'display:none'}
