@@ -37,6 +37,7 @@ grep -q 'SystemdCgroup = true' /etc/containerd/config.toml \
 
 systemctl enable --now containerd
 systemctl restart containerd
-log_ok "containerd configured (SystemdCgroup=true) and started"
+bash "$(dirname "$0")/registry-mirror.sh"
+log_ok "containerd configured (SystemdCgroup=true, Docker Hub via mirror.gcr.io) and started"
 
 mark_done "containerd"
