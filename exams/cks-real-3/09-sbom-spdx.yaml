@@ -1,7 +1,7 @@
 id: 09-sbom-spdx
 requires: heavy
 title: Generate an SBOM and Find an Image by Package Version
-weight: 7
+weight: 9
 context: ssh controlplane
 description: |
   The tools `bom` and `trivy` are installed on `controlplane`.

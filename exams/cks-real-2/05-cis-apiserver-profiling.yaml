@@ -1,7 +1,7 @@
 id: 05-cis-apiserver-profiling
 title: Disable kube-apiserver Profiling (CIS 1.2.15)
 weight: 4
-context: controlplane
+context: ssh controlplane
 description: |
   CIS Benchmark 1.2.15 requires that profiling is disabled on the API server.
 

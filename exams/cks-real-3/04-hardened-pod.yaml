@@ -2,7 +2,7 @@ id: 04-hardened-pod
 requires: heavy
 title: Create a Pod Hardened with AppArmor and Seccomp
 weight: 4
-context: controlplane
+context: ssh controlplane
 description: |
   The AppArmor profile `k8s-no-proc-write` is already loaded on the node.
 

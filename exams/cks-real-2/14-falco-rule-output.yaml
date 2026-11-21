@@ -1,7 +1,7 @@
 id: 14-falco-rule-output
 requires: heavy
 title: Change a Falco Rule and Log Alerts to a File
-weight: 7
+weight: 8
 context: ssh controlplane
 description: |
   Falco runs on `controlplane` as the systemd service `falco`. Configuration and rules are in `/etc/falco/`.

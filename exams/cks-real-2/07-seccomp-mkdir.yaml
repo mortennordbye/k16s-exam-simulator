@@ -1,7 +1,7 @@
 id: 07-seccomp-mkdir
 title: Create a Custom Seccomp Profile to Block mkdir
 weight: 5
-context: controlplane
+context: ssh controlplane
 description: |
   Create a custom seccomp profile that blocks the `mkdir` and `mkdirat` syscalls.
 

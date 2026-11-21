@@ -1,7 +1,7 @@
 id: 05-seccomp-mount
 title: Block Mount Syscalls via Seccomp on a Deployment
 weight: 6
-context: controlplane
+context: ssh controlplane
 description: |
   Deployment `mount-block` exists in namespace `seccomp-mount` without a seccomp profile.
 

@@ -1,7 +1,7 @@
 id: 01-netpol-microseg
 title: Microsegmentation - Deny All Ingress, Selective Worker Egress
 weight: 7
-context: ""
+context: ssh controlplane
 description: |
   Namespace `netpol-internal` contains pods with labels `role=worker`, `role=api`, and `role=metrics`.
 

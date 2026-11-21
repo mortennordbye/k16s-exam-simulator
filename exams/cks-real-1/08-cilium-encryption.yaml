@@ -1,0 +1,12 @@
+id: 08-cilium-encryption
+requires: heavy
+title: Turn On Pod-to-Pod Encryption with Cilium WireGuard
+weight: 6
+context: ssh cilium-cp
+description: |
+  Cluster `cilium` (node `cilium-cp`) uses Cilium as its CNI. Cilium was installed with the `cilium` CLI (Helm release `cilium` in namespace `kube-system`). Transparent encryption is off.
+
+  1. Turn on Cilium transparent encryption with type `wireguard`. Keep all other Cilium settings.
+  2. Make sure the Cilium agent runs with encryption on.
+  3. Run `cilium-dbg encrypt status` in the Cilium agent pod and save its output to `/opt/cks-cilium/encrypt-status.txt` on `cilium-cp`.
+hint: "`cilium upgrade --reuse-values --set encryption.enabled=true --set encryption.type=wireguard` (or `cilium config set enable-wireguard true`). Restart the agent if the CLI did not: `kubectl -n kube-system rollout restart ds/cilium`. Then `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg encrypt status`."

@@ -1,7 +1,7 @@
 id: 16-audit-policy
 requires: heavy
 title: Enable Audit Logging
-weight: 7
+weight: 9
 context: ssh controlplane
 description: |
   Enable audit logging in the cluster. The kube-apiserver runs as a static pod on `controlplane`.

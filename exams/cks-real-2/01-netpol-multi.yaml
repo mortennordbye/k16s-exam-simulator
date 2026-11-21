@@ -1,7 +1,7 @@
 id: 01-netpol-multi
 title: Zone-Based Ingress and Egress with DMZ and Internal Namespaces
-weight: 6
-context: ""
+weight: 5
+context: ssh controlplane
 description: |
   Namespace `netpol-multi` contains pods with label `app=app1`.
   Namespaces `dmz` and `internal` exist but are not yet labelled.
