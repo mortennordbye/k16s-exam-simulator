@@ -57,5 +57,12 @@ containerd:
   system: false
   user: false
 
+# CKS hub: Lima user-v2 network. VMs on it reach each other (k16s and the
+# second exam cluster k16s-cilium, host name cilium-cp). Works on vz and qemu.
+# The VM gets one NIC on 192.168.104.0/24; the lease is kept per MAC address
+# in ~/.lima/_networks/user-v2/leases.json, so the IP stays the same.
+networks:
+  - lima: user-v2
+
 ssh:
   loadDotSSHPubKeys: true

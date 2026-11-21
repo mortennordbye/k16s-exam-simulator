@@ -1,0 +1,43 @@
+# CKS hub: second exam cluster "cilium-cp" (Lima instance k16s-cilium).
+#
+# A template like lima.yaml: local/k16s-local fills in the __TOKEN__ values.
+# One kubeadm node (control plane, untainted) with Cilium and WireGuard
+# encryption. It shares the Lima user-v2 network with the main VM k16s, so
+# the main VM reaches it as "cilium-cp" (an /etc/hosts entry written by
+# k16s-local link).
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+cpus: __CPUS__
+memory: "__MEMORY_GIB__GiB"
+disk: "__DISK_GIB__GiB"
+
+mounts:
+  - location: "__REPO_ROOT__"
+    mountPoint: "{{.Home}}/k16s"
+    writable: false
+
+networks:
+  - lima: user-v2
+
+# Do not forward guest ports to the Mac: the main VM already forwards 6443
+# and other ports, and this VM is only used from the main VM.
+portForwards:
+  - guestPortRange: [1, 65535]
+    ignore: true
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      apt-get update -qq || true
+
+containerd:
+  system: false
+  user: false
+
+ssh:
+  loadDotSSHPubKeys: true
