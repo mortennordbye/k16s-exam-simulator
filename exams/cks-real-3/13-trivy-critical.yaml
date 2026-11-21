@@ -1,0 +1,12 @@
+id: 13-trivy-critical
+requires: heavy
+title: Remove Pods with Critical Image Vulnerabilities
+weight: 6
+context: ssh controlplane
+description: |
+  Namespace `scan` runs several pods.
+
+  Use `trivy` (installed on `controlplane`) to scan the image of every pod in namespace `scan`.
+
+  Delete every pod whose image has one or more vulnerabilities with severity `CRITICAL`. Do not delete the other pods.
+hint: "`trivy image --severity CRITICAL <image>` prints only critical findings. The vulnerability DB is already downloaded."

@@ -1,0 +1,18 @@
+id: 15-falco-rule-output
+requires: heavy
+title: Change a Falco Rule and Log Alerts to a File
+weight: 6
+context: ssh controlplane
+description: |
+  Falco runs on `controlplane` as the systemd service `falco`. Configuration and rules are in `/etc/falco/`.
+
+  1. Configure Falco to also write its alerts to the file `/var/log/falco/alerts.log`.
+  2. Change the output of the Falco rule `Read sensitive file untrusted` to exactly this format:
+
+     `SENSITIVE-READ file=%fd.name user=%user.name pod=%k8s.pod.name ns=%k8s.ns.name`
+
+     Do not edit `/etc/falco/falco_rules.yaml`: put your change in `/etc/falco/falco_rules.local.yaml`.
+  3. Restart Falco and make sure it runs.
+
+  Test it: `kubectl -n falco-lab exec probe -- cat /etc/shadow` must create a line in the new format in `/var/log/falco/alerts.log`.
+hint: "`file_output` in `falco.yaml` (or a file in `/etc/falco/config.d/`). A rule in a later rules file can replace the output of an existing rule with `override: {output: replace}`."

@@ -1,0 +1,12 @@
+id: 09-encryption-at-rest
+requires: heavy
+title: Encrypt Secrets at Rest
+weight: 7
+context: ssh controlplane
+description: |
+  Secrets in the cluster are stored in etcd as plain text. Fix this.
+
+  1. Create an `EncryptionConfiguration` at `/etc/kubernetes/enc/encryption.yaml` that encrypts `secrets` with the `aescbc` provider. Use one key named `key1` (a random 32-byte key, base64 encoded). Existing plain text data must stay readable.
+  2. Configure the kube-apiserver on `controlplane` to use this file.
+  3. Make sure that all existing secrets in namespace `team-green` are stored encrypted in etcd.
+hint: "Use the `identity` provider as the last provider. A secret is only encrypted when it is written again."

@@ -1,0 +1,24 @@
+id: 17-audit-policy
+requires: heavy
+title: Enable Audit Logging
+weight: 7
+context: ssh controlplane
+description: |
+  Enable audit logging in the cluster. The kube-apiserver runs as a static pod on `controlplane`.
+
+  A starter policy exists at `/etc/kubernetes/audit/policy.yaml`. Edit it so that:
+
+  - Nothing is logged in the `RequestReceived` stage.
+  - `secrets` in namespace `prod-secure` are logged at level `Metadata`.
+  - `create`, `update`, `patch` and `delete` requests on `pods` (any namespace) are logged at level `RequestResponse`.
+  - `deployments` in namespace `prod-secure` are logged at level `Request`.
+  - All other requests are not logged.
+
+  Then configure the kube-apiserver to:
+
+  - use the policy file `/etc/kubernetes/audit/policy.yaml`
+  - write the log to `/var/log/kubernetes/audit/audit.log`
+  - keep at most `2` old log files, for at most `10` days
+
+  Make sure the kube-apiserver is running again when you are done.
+hint: "Rules are matched in order and the first match wins. The kube-apiserver container needs hostPath volumes for the policy file and for the log directory."

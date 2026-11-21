@@ -1,0 +1,23 @@
+id: 12-static-analysis
+requires: heavy
+title: Fix Findings from Static Analysis
+weight: 7
+context: ssh controlplane
+description: |
+  **Part 1: kubesec**
+
+  The pod manifest `/opt/cks-static/reporting.yaml` is running as pod `reporting` in namespace `static`. `kubesec` is installed on `controlplane`.
+
+  Change the manifest so that `kubesec scan` reports:
+  - no critical findings, and
+  - the checks `RunAsNonRoot`, `CapDropAll` and `LimitsMemory` as passed.
+
+  Keep the image and the container name. Apply the fixed manifest so the running pod `reporting` uses it.
+
+  **Part 2: Dockerfile**
+
+  Fix `/opt/cks-static/Dockerfile`. Do not build the image.
+  - Use the base image `ubuntu:24.04` instead of the `latest` tag.
+  - Remove the hard-coded password.
+  - The container must run as the user `appuser`, not as root.
+hint: "`kubesec scan <file>` shows `critical`, `advise` and `passed` lists. A running pod spec cannot get most security changes: delete and create it again."

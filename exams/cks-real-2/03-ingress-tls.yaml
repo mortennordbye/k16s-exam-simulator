@@ -1,0 +1,14 @@
+id: 03-ingress-tls
+title: Secure an Ingress with TLS
+weight: 4
+context: ""
+description: |
+  Namespace `shop` has a deployment `shop` and a service `shop-svc` (port `80`).
+  A certificate and key for `shop.k16s.local` exist at `/opt/cks-ingress/shop.crt` and `/opt/cks-ingress/shop.key`.
+
+  1. Create a TLS secret `shop-tls` in namespace `shop` from these files.
+  2. Create an Ingress `shop-ingress` in namespace `shop`:
+     - ingress class `nginx`
+     - host `shop.k16s.local`, path `/` (type `Prefix`) to service `shop-svc` on port `80`
+     - TLS for host `shop.k16s.local` with secret `shop-tls`
+hint: "`kubectl create secret tls` and `kubectl create ingress --rule=host/path=service:port,tls=secret`."

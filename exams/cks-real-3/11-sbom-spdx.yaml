@@ -1,0 +1,11 @@
+id: 11-sbom-spdx
+requires: heavy
+title: Generate an SBOM and Find an Image by Package Version
+weight: 6
+context: ssh controlplane
+description: |
+  The tools `bom` and `trivy` are installed on `controlplane`.
+
+  1. Generate an SBOM of image `nginx:1.27-alpine` in **SPDX JSON** format and save it to `/opt/cks-sbom/nginx.spdx.json`.
+  2. Namespace `sbom` has three deployments: `alpha`, `beta` and `gamma`. One of their images contains the package `busybox` in version `1.36.1-r15`. Find it and delete that deployment. Do not change the other deployments.
+hint: "`bom generate --image <image> --format json --output <file>` or `trivy image --format spdx-json -o <file> <image>`. Search an SBOM for the package name and version."
