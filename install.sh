@@ -105,12 +105,12 @@ fi
 
 if [[ "${LAPTOP}" == "true" ]]; then
   [[ -n "${REMOTE_HOST}" ]] && { echo "ERROR: --laptop and --host are mutually exclusive"; exit 1; }
-  exec "${SCRIPT_DIR}/local/k16s-local" up "${EXTRA_ARGS[@]}" "${LAPTOP_ARGS[@]}"
+  exec "${SCRIPT_DIR}/local/k16s-local" up ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} ${LAPTOP_ARGS[@]+"${LAPTOP_ARGS[@]}"}
 fi
 
 if [[ "${LIGHTWEIGHT}" == "true" ]]; then
   [[ -n "${REMOTE_HOST}" ]] && { echo "ERROR: --lightweight and --host are mutually exclusive"; exit 1; }
-  exec "${SCRIPT_DIR}/lightweight/k16s-lite" up "${LITE_ARGS[@]}"
+  exec "${SCRIPT_DIR}/lightweight/k16s-lite" up ${LITE_ARGS[@]+"${LITE_ARGS[@]}"}
 fi
 
 if [[ -n "${REMOTE_HOST}" ]]; then
@@ -198,4 +198,4 @@ fi
   exit 1
 }
 
-bash "${SCRIPT_DIR}/provision/main.sh" "${EXTRA_ARGS[@]}"
+bash "${SCRIPT_DIR}/provision/main.sh" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
