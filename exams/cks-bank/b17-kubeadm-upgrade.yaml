@@ -1,0 +1,17 @@
+id: b17-kubeadm-upgrade
+requires: heavy
+title: Upgrade the Control Plane with kubeadm
+weight: 7
+context: ssh cilium-cp
+description: |
+  Cluster `cilium` has one node, `cilium-cp`. The node is the control plane and also runs workloads. The cluster runs Kubernetes v1.36.
+
+  Upgrade the cluster to the latest v1.37 patch release:
+
+  1. Change the package repository on `cilium-cp` from v1.36 to v1.37. The file is `/etc/apt/sources.list.d/kubernetes.list`.
+  2. Upgrade `kubeadm` and upgrade the control plane with it.
+  3. Drain node `cilium-cp`. Upgrade `kubelet` and `kubectl` to the same version, restart the kubelet and uncordon the node.
+  4. Save the output of `kubectl get nodes` to `/opt/cks-upgrade/nodes.txt` on `cilium-cp`.
+
+  Keep the packages `kubeadm`, `kubelet` and `kubectl` on hold after the upgrade.
+hint: "Follow the kubernetes.io page \"Upgrading kubeadm clusters\": `apt-mark unhold kubeadm`, `apt-get install kubeadm='1.37.x-*'`, `kubeadm upgrade plan`, `kubeadm upgrade apply v1.37.x`, then `kubectl drain cilium-cp --ignore-daemonsets`, upgrade kubelet and kubectl, `systemctl daemon-reload && systemctl restart kubelet`, `kubectl uncordon cilium-cp`."

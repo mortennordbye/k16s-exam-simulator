@@ -1,0 +1,16 @@
+id: b18-cilium-netpol
+requires: heavy
+title: Allow and Deny Traffic with CiliumNetworkPolicy
+weight: 6
+context: ssh cilium-cp
+description: |
+  Cluster `cilium` (node `cilium-cp`) uses Cilium as its CNI. Namespace `team-blue` has the Deployments `frontend`, `backend`, `database` and `other`. Each has a Service of the same name on port 80. The pods have the label `app=<deployment name>`.
+
+  Create these `CiliumNetworkPolicy` resources in namespace `team-blue`:
+
+  1. `backend-ingress`: pods with `app=backend` accept incoming traffic only from pods with `app=frontend`, and only on TCP port `80`.
+  2. `backend-deny-database`: deny all outgoing traffic from pods with `app=backend` to pods with `app=database`.
+  3. `frontend-deny-world`: deny all outgoing traffic from pods with `app=frontend` to addresses outside the cluster. Use the Cilium entity `world`.
+
+  All other traffic of these pods must keep working. For example `backend` still reaches `other`, and `frontend` still reaches `database` (DNS included).
+hint: "Policy 1 uses `ingress` with `fromEndpoints` and `toPorts`. Policies 2 and 3 use `egressDeny` with `toEndpoints` and `toEntities: [world]`. A policy with only deny rules also puts the pods into default deny for that direction: add `egress: [{toEntities: [all]}]`, or set `enableDefaultDeny: {egress: false}`."
