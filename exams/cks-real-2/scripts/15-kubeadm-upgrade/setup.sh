@@ -24,7 +24,7 @@ case "$V" in
     # nodes.txt step gives points now. To practise the full upgrade again,
     # build the second cluster again on the Mac: make rebuild-cilium
     echo "NOTE: cilium-cp already runs $V (upgraded in an earlier session)."
-    echo "To practise the upgrade again, run 'make rebuild-cilium' on the Mac (about 6 min)."
+    echo "To practise the upgrade again, run 'make rebuild-cilium' on the Mac (about 3 min)."
     ;;
   *)
     echo "ERROR: cannot read the version of node cilium-cp (got: '$V')"
